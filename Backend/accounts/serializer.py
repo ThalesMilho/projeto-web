@@ -6,17 +6,17 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
-    
+    saldo = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True) # Adiciona isto
+
     class Meta:
         model = CustomUser
-        # Mapeando os campos exatos que o Front vai mandar + ID
-        fields = ('id', 'nome_completo', 'cpf_cnpj', 'phone', 'password')
+        fields = ('id', 'nome_completo', 'cpf_cnpj', 'phone', 'password', 'saldo')
 
     def validate_cpf_cnpj(self, value):
         """
         Remove pontuação e valida se o CPF/CNPJ é matematicamente real.
         """
-        # Sanitização: remove tudo que não é dígito
+        # Sanitizacao
         clean_doc = re.sub(r'\D', '', value)
         
         if not clean_doc:
@@ -62,8 +62,10 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         data = super().validate(attrs)
 
-        data['user_id'] = self.user.id
-        data['nome_completo'] = self.user.nome_completo
-        data['cpf_cnpj'] = self.user.cpf_cnpj
-        
+        data['user'] = {
+            'id': self.user.id,
+            'nome': self.user.nome_completo,
+            'cpf': self.user.cpf_cnpj,
+            'saldo': float(self.user.saldo)
+        }
         return data

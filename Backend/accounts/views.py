@@ -5,15 +5,6 @@ from rest_framework.permissions import AllowAny
 from .serializer import UserSerializer, CustomTokenObtainPairSerializer 
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-# --- MOCK DE LOGIN (Simulação para o Front testar) ---
-#class LoginView(APIView):
-#   def post(self, request):
-#       return Response({
-#            "token": "token-falso-de-teste", 
-#            "user_id": 1,
-#            "message": "Login simulado (MOCK) com sucesso!"
-#S        }, status=status.HTTP_200_OK)
-
 class RegisterView(APIView):
     permission_classes = [AllowAny] 
 

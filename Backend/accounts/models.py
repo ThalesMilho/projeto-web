@@ -42,7 +42,7 @@ class CustomUser(AbstractUser):
     
     phone = models.CharField(max_length=15, blank=True, null=True, verbose_name="WhatsApp")
     
-    bio = models.TextField(blank=True, null=True)
+    saldo = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Saldo em Conta")
 
     username = models.CharField(max_length=150, blank=True, null=True)
     
