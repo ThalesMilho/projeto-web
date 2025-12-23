@@ -1,0 +1,7 @@
+Service Pattern: Organização e Desacoplamento (View não sabe lógica).
+
+Exceções: Resiliência (O sistema não quebra, ele trata o erro).
+
+API REST: Comunicação Padrão (JSON via HTTP POST).
+
+Dotenv: Segurança (Senhas fora do código).

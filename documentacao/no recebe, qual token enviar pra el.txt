@@ -1,0 +1,19 @@
+no recebe, qual token enviar pra ele? {
+
+    "token": "exemplo-de-token-jwt-falso-123456",
+
+    "user_id": 1,
+
+    "message": "Login realizado com sucesso"
+
+}
+
+
+
+Neste exato momento:
+
+O servidor roda (runserver ok).
+
+As rotas /api/accounts/login/ existem.
+
+O Frontend (React) já consegue "falar" com o Backend, mas recebe respostas simuladas.

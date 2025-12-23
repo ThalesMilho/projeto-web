@@ -1,0 +1,31 @@
+Sua primeira e mais importante tarefa é criar um "parque de diversões" seguro na sua própria máquina.
+
+Instale um Servidor Local:
+
+Opção A (Recomendada): Use o Local. É uma ferramenta fantástica (e gratuita) que cria, com alguns cliques, um site WordPress completo (com servidor e banco de dados) no seu computador. É o "VS Code" do desenvolvimento WordPress local.
+
+Opção B (Tradicional): Use XAMPP ou MAMP. Você já deve ter ouvido falar deles. Instalam Apache, MySQL e PHP na sua máquina. É um pouco mais manual, mas funciona perfeitamente.
+
+
+Obtenha os "Arquivos-Fonte" da Empresa:
+
+Para replicar o site da FUBOG, você precisa do tema que eles usam. Você precisará pedir ao seu chefe ou ao TI o arquivo .zip do "Betheme".
+
+Nota: O Betheme é um tema pago. Você não vai achá-lo de graça na loja do WordPress. A empresa comprou uma licença e deve ter o arquivo de instalação.
+
+Seu primeiro objetivo: Ter um site WordPress rodando no seu localhost com o Betheme instalado e ativado.
+
+
+Onde as coisas vivem: A pasta mais importante é a wp-content.
+
+wp-content/themes/betheme/: Aqui está o "cérebro" do site (os arquivos .php que atuam como templates, os arquivos .css e .js do tema).
+
+wp-content/plugins/: Aqui ficam os plugins (ex: o formulário de contato, SEO, etc.).
+
+wp-content/uploads/: Aqui ficam as imagens e mídias que você sobe pelo painel.
+
+O Banco de Dados é o Rei:
+
+Este é o conceito mais importante: Ao contrário de um site estático (HTML/CSS/JS puros) ou mesmo do seu projeto Django, no WordPress quase todo o conteúdo não está em arquivos .html.
+
+

@@ -1,0 +1,122 @@
+projeto mais pra frente 
+montar um cassino de cripto la fora
+
+fazer checkout com cripto
+
+ter moeda propia
+entrar no cassino pelo airdrop
+
+
+import requests
+import os
+import logging
+from trigger.models import InstanciaZap
+
+logger = logging.getLogger(__name__)
+
+class UazApiClient:
+    def __init__(self):
+        # 1. Tenta pegar as credenciais do Banco de Dados (Painel Admin)
+        instancia_db = InstanciaZap.objects.first()
+        
+        if instancia_db and instancia_db.instancia_id and instancia_db.token:
+            self.base_url = os.getenv('UAZAPI_URL', 'https://free.uazapi.com')
+            # Garante que a URL não termine com barra para evitar erros
+            self.base_url = self.base_url.rstrip('/')
+            self.token = instancia_db.token
+            self.instance_id = instancia_db.instancia_id
+        else:
+            # 2. Se não tiver no banco, tenta pegar do arquivo .env (Fallback)
+            self.base_url = os.getenv('UAZAPI_URL', 'https://free.uazapi.com').rstrip('/')
+            self.token = os.getenv('UAZAPI_TOKEN')
+            self.instance_id = os.getenv('UAZAPI_INSTANCE')
+
+        self.headers = {
+            "token": self.token,
+            "apikey": self.token,  # Algumas versões exigem apikey no header
+            "Content-Type": "application/json"
+        }
+
+    def enviar_texto(self, numero: str, mensagem: str) -> dict:
+        """
+        Envia mensagem de texto.
+        Atualizado para o padrão mais comum da API V2 (Evolution/UazAPI).
+        """
+        # Endpoint padrão: /message/sendText/{instance_id}
+        endpoint = f"{self.base_url}/message/sendText/{self.instance_id}"
+        
+        # Payload formatado para V2
+        payload = {
+            "number": numero,
+            "options": {
+                "delay": 1200,
+                "presence": "composing"
+            },
+            "textMessage": {
+                "text": mensagem
+            }
+        }
+
+        try:
+            # print(f"--- [DEBUG] Enviando para: {endpoint}")
+            response = requests.post(endpoint, json=payload, headers=self.headers, timeout=15)
+            
+            # Se der erro 404/405, pode ser que a API use o endpoint antigo (/send/text)
+            if response.status_code in [404, 405]:
+                return self._enviar_texto_legado(numero, mensagem)
+
+            return response.json()
+            
+        except Exception as e:
+            logger.error(f"Erro ao enviar mensagem: {str(e)}")
+            return {"error": True, "details": str(e)}
+
+    def _enviar_texto_legado(self, numero, mensagem):
+        """Fallback para endpoint antigo caso a API seja versão anterior"""
+        endpoint = f"{self.base_url}/send/text"
+        payload = {"number": numero, "text": mensagem}
+        try:
+            return requests.post(endpoint, json=payload, headers=self.headers, timeout=15).json()
+        except Exception as e:
+            return {"error": True, "details": str(e)}
+
+    def obter_qr_code(self):
+        """
+        Gera o QR Code para conexão.
+        Endpoint: POST /instance/connect/{instance_id}
+        """
+        endpoint = f"{self.base_url}/instance/connect/{self.instance_id}"
+        
+        try:
+            # Enviamos um JSON vazio para indicar que queremos o QR Code (não o pareamento por código)
+            response = requests.post(endpoint, json={}, headers=self.headers, timeout=15)
+            
+            if response.status_code == 200:
+                # Retorna algo como: { "base64": "data:image/png;base64,..." }
+                return response.json()
+            
+            logger.error(f"Erro ao obter QR. Status: {response.status_code} | Body: {response.text}")
+            return None
+        except Exception as e:
+            logger.error(f"Erro de conexão ao buscar QR: {str(e)}")
+            return None
+
+    def verificar_status(self):
+        """
+        Verifica se a instância está conectada.
+        Endpoint: GET /instance/connectionState/{instance_id}
+        """
+        endpoint = f"{self.base_url}/instance/connectionState/{self.instance_id}"
+        
+        try:
+            response = requests.get(endpoint, headers=self.headers, timeout=5)
+            if response.status_code == 200:
+                dados = response.json()
+                # A API pode retornar o estado dentro de 'instance' -> 'state' ou direto na raiz
+                state = dados.get('instance', {}).get('state') or dados.get('state')
+                
+                # Consideramos conectado se estiver 'open' ou 'connected'
+                return state in ['open', 'connected']
+            return False
+        except:
+            return False

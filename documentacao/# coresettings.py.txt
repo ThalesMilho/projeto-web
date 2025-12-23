@@ -1,0 +1,20 @@
+# core/settings.py
+
+# ... (outras configurações)
+
+STATIC_URL = 'static/'
+
+# ADICIONE ESTAS LINHAS:
+# Diz pro Django: "Procure arquivos estáticos também nesta pasta aqui"
+STATICFILES_DIRS = [
+    BASE_DIR / 'core' / 'static',
+]
+
+
+
+
+<div class="d-flex align-items-center gap-3">
+    <div class="brand-text">
+        <i class="fa-solid fa-eye text-success me-2"></i> FUBOG <span style="font-weight:300; font-size: 0.8em; color: #666;">Trigger</span>
+    </div>
+</div>

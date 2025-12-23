@@ -28,11 +28,13 @@ INSTALLED_APPS = [
     'corsheaders',
     'accounts',
     'games',
+    'drf_yasg',       
 ]
 
 
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',        
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     

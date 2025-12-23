@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Bilhete #{{ aposta.id }}</title>
+    <style>
+        body {
+            background-color: #f0f0f0;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            padding-top: 50px;
+        }
+        .ticket {
+            background-color: #fff4b8; /* Cor de papel de pão/térmico */
+            width: 300px;
+            padding: 20px;
+            border: 1px dashed #333;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
+        .footer { text-align: center; border-top: 2px dashed #000; padding-top: 10px; margin-top: 10px; font-size: 12px; }
+        .row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .big { font-size: 1.5em; font-weight: bold; text-align: center; margin: 10px 0; }
+        .label { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="ticket">
+        <div class="header">
+            <h3>BANCA DO THALES</h3>
+            <p>Deu a louca no gerente!</p>
+            <small>CNPJ: {{ aposta.usuario.cpf_cnpj }}</small>
+        </div>
+
+        <div class="row">
+            <span class="label">Bilhete:</span>
+            <span>#{{ aposta.id }}</span>
+        </div>
+        <div class="row">
+            <span class="label">Data:</span>
+            <span>{{ aposta.criado_em|date:"d/m/Y H:i" }}</span>
+        </div>
+        <div class="row">
+            <span class="label">Cliente:</span>
+            <span>{{ aposta.usuario.nome_completo|truncatechars:15 }}</span>
+        </div>
+
+        <hr style="border: 1px dashed #000;">
+
+        <div class="row">
+            <span class="label">Sorteio:</span>
+            <span>{{ aposta.sorteio.get_horario_display }}</span>
+        </div>
+        <div class="row">
+            <span class="label">Data Extração:</span>
+            <span>{{ aposta.sorteio.data|date:"d/m/Y" }}</span>
+        </div>
+
+        <div class="big">
+            {{ aposta.get_tipo_jogo_display }}<br>
+            NÚMERO: {{ aposta.palpite }}
+        </div>
+
+        <div class="row" style="font-size: 1.2em;">
+            <span class="label">Valor:</span>
+            <span>R$ {{ aposta.valor }}</span>
+        </div>
+
+        {% if aposta.ganhou %}
+        <div class="big" style="color: green; border: 2px solid green; padding: 5px;">
+            BILHETE PREMIADO!<br>
+            R$ {{ aposta.valor_premio }}
+        </div>
+        {% endif %}
+
+        <div class="footer">
+            <p>Validade: 3 dias</p>
+            <p>Boa Sorte!</p>
+            <p>www.bancadothales.com.br</p>
+        </div>
+    </div>
+    <script>
+        // Opcional: Imprime automaticamente ao abrir
+        // window.print();
+    </script>
+</body>
+</html>
