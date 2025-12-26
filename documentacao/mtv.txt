@@ -1,0 +1,123 @@
+import na view
+
+from django.shortcuts import render # Já deve ter, mas confira
+
+
+
+# --- VIEW VISUAL (HTML) ---
+
+def comprovante_view(request, pk):
+    """
+    Renderiza o comprovante da aposta em HTML para impressão.
+    """
+    aposta = get_object_or_404(Aposta, pk=pk)
+    return render(request, 'games/ticket.html', {'aposta': aposta})
+
+
+
+urls 
+
+from .views import (
+    # ... os outros ...
+    comprovante_view # <--- Novo import
+)
+
+
+
+urlpatterns = [
+    # ... as outras rotas ...
+    path('comprovante/<int:pk>/', comprovante_view, name='comprovante-aposta'),
+]
+
+
+
+
+
+
+
+login e saldo
+
+
+Criar ecrã de Login no React/HTML consumindo a API /api/accounts/login/.
+
+Exibir o "Saldo Atual" do utilizador no cabeçalho do site (consumindo o token JWT).
+
+Valor: O utilizador vê a sua conta real.
+
+
+o meu das apostas
+
+
+Renderizar a lista de animais consumindo /api/games/bichos/.
+
+Criar o formulário visual de aposta (Input de Valor + Seleção de Animal).
+
+Integrar o botão "Apostar" com a rota /api/games/apostar/.
+
+
+
+historico e comprovantes
+
+
+Criar ecrã "Minhas Apostas" listando o histórico do utilizador.
+
+Adicionar botão para abrir o comprovante visual (Ticket) que criámos hoje.
+
+Valor: Transparência e confiança para o apostador.]]
+Exibir os últimos sorteios e os animais vencedores na Home.
+
+Notificação visual (Pop-up ou destaque) quando o utilizador ganha um prémio.
+
+Valor: Engajamento e retenção do utilizador.
+
+
+
+randomizar sorteio
+
+
+
+
+
+começar em cotação 6000 (6k)
+copiar cotações do pontobicho
+
+
+focar em bônus//dpois
+
+o bônus o cara ganha em deposito(no primeiro o cara ganha 100%)
+
+teto 100$
+regras de rodar pelo menos 2x o valor
+
+
+fintech ou gateway via api direto
+
+horse pay 
+sqlp do rodrigo
+
+
+
+
+histórico e comprovantes
+
+relatório cash in e cash out[
+
+
+$response = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/accounts/login/" -Method Post -ContentType "application/json" -Body '{"username": "70114581150", "password": "lya100104"}'
+$token = $response.access
+Write-Host "Token Capturado: $token"
+
+
+tantos usuários novos
+
+o que houve no dia
+
+
+
+api autenticação
+o que sera preciso fazer
+autenticação
+webhook o que o ceceu vai onseguir omig
+
+
+triplo pay

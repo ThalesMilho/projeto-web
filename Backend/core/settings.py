@@ -37,8 +37,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',        
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    
-    'corsheaders.middleware.CorsMiddleware', 
+     
     
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -73,8 +72,12 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'sistemabicho',      # Nome que criamos no pgAdmin
+        'USER': 'postgres',          # Usuário padrão
+        'PASSWORD': 'lya100104', 
+        'HOST': 'localhost',         # Roda na sua máquina
+        'PORT': '5432',              # Porta padrão
     }
 }
 
@@ -122,11 +125,20 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny', # (por enquanto)
+        'rest_framework.permissions.AllowAny', 
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication', 
     ),
+    # --- NOVO: RATE LIMITING (Proteção contra Brute Force e Flood) ---
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle', # Para quem não está logado (Login/Register)
+       #'rest_framework.throttling.UserRateThrottle'  # Para usuários logados (Apostas)
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '5/minute',   # 5 tentativas de login por minuto (Dificulta quebra de senha)
+        'user': '60/minute'
+    }
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
@@ -143,3 +155,24 @@ SIMPLE_JWT = {
 CSRF_TRUSTED_ORIGINS = [
     'https://*.ngrok-free.app',
 ]
+
+# --- LOGGING CONFIGURATION (Segurança / LGPD) ---
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'filters': {
+        'mask_sensitive_data': {
+            '()': 'core.logging_filters.SensitiveDataFilter', # Aponta para o arquivo que criamos
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'filters': ['mask_sensitive_data'], # Aplica a máscara no terminal
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO', # Em produção, mudamos para 'WARNING'
+    },
+}

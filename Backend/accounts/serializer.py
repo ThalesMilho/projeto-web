@@ -56,16 +56,29 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     
     def validate(self, attrs):
-        data_input = attrs.get('cpf_cnpj')
-        if data_input:
-            attrs['cpf_cnpj'] = re.sub(r'\D', '', data_input)
-
+        # Verifica qual nome de campo o sistema está usando (username ou cpf_cnpj)
+        # O SimpleJWT usa o USERNAME_FIELD do seu models.py
+        
+        # 1. Pega o valor do login (tenta pegar 'username' ou 'cpf_cnpj')
+        login_input = attrs.get('username') or attrs.get('cpf_cnpj')
+        
+        if login_input:
+            # 2. Limpa o valor (remove pontos e traços)
+            clean_value = re.sub(r'\D', '', login_input)
+            
+            # 3. Devolve o valor limpo para o campo correto
+            if 'username' in attrs:
+                attrs['username'] = clean_value
+            if 'cpf_cnpj' in attrs:
+                attrs['cpf_cnpj'] = clean_value
+                
+        # Continua a validação padrão
         data = super().validate(attrs)
-
-        data['user'] = {
-            'id': self.user.id,
-            'nome': self.user.nome_completo,
-            'cpf': self.user.cpf_cnpj,
-            'saldo': float(self.user.saldo)
-        }
+        
+        # Mantém seus dados extras
+        data['user_id'] = self.user.id
+        data['nome'] = self.user.nome_completo
+        data['is_admin'] = self.user.is_superuser
+        data['saldo'] = str(self.user.saldo)
+        
         return data

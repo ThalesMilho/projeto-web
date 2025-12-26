@@ -3,7 +3,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.utils import timezone
-from django.db import transaction # Importante para garantir que o dinheiro só sai se a aposta gravar
+from django.db import transaction 
+from django.db.models import F 
 from .models import Sorteio
 from .serializer import SorteioSerializer, CriarApostaSerializer
 from django.shortcuts import get_object_or_404
@@ -11,6 +12,9 @@ from .utils import descobrir_bicho
 from decimal import Decimal
 from .models import Sorteio, Aposta
 from django.shortcuts import render 
+from accounts.models import Transacao
+import math
+from collections import Counter
 
 # --- VIEWS DE LEITURA (GET - Públicas) ---
 
@@ -52,11 +56,25 @@ class CotacaoView(APIView):
 
     def get(self, request):
         cotacoes = [
-            {"modalidade": "G", "nome": "Grupo", "fator": 18.0},
-            {"modalidade": "D", "nome": "Dezena", "fator": 60.0},
+            # --- PRINCIPAIS ---
+            {"modalidade": "M", "nome": "Milhar", "fator": 6000.0, "destaque": True}, 
             {"modalidade": "C", "nome": "Centena", "fator": 600.0},
-            {"modalidade": "M", "nome": "Milhar", "fator": 5000.0},
-            {"modalidade": "MC", "nome": "Milhar/Centena", "fator": 2500.0}, 
+            {"modalidade": "D", "nome": "Dezena", "fator": 60.0},
+            {"modalidade": "G", "nome": "Grupo", "fator": 18.0},
+            {"modalidade": "MC", "nome": "Milhar/Centena", "fator": 3300.0},
+
+            # --- ESPECIAIS ---
+            {"modalidade": "DG", "nome": "Dupla de Grupo", "fator": 16.0},
+            {"modalidade": "TG", "nome": "Terno de Grupo", "fator": 150.0},
+            {"modalidade": "QG", "nome": "Quadra de Grupo", "fator": 1000.0},
+            {"modalidade": "QNG", "nome": "Quina de Grupo", "fator": 5000.0},
+            {"modalidade": "DD", "nome": "Duque de Dezena", "fator": 300.0},
+            {"modalidade": "TD", "nome": "Terno de Dezena", "fator": 5000.0},
+            {"modalidade": "PV", "nome": "Passe Vai", "fator": 90.0},
+            {"modalidade": "PVV", "nome": "Passe Vai e Vem", "fator": 90.0},
+            {"modalidade": "MI", "nome": "Milhar Invertida", "fator": 6000.0},
+            {"modalidade": "CI", "nome": "Centena Invertida", "fator": 600.0},
+            {"modalidade": "DI", "nome": "Dezena Invertida", "fator": 60.0},
         ]
         return Response(cotacoes, status=status.HTTP_200_OK)
 
@@ -133,27 +151,66 @@ class LotinhaView(APIView):
 class RealizarApostaView(APIView):
     """
     Recebe o pedido de aposta, valida saldo e sorteio, desconta o dinheiro e cria o bilhete.
-    Tudo isso dentro de uma transação atômica (ou faz tudo, ou não faz nada).
+    Tudo isso dentro de uma transação atômica.
     """
     permission_classes = [IsAuthenticated] # Só logado aposta!
 
     def post(self, request):
-        # Passamos o context para o serializer ter acesso ao 'request.user'
         serializer = CriarApostaSerializer(data=request.data, context={'request': request})
         
         if serializer.is_valid():
             try:
-                # Inicia transação no banco (Segurança Financeira)
+                # Dados da aposta
+                dados = serializer.validated_data
+                user = request.user
+                
+                # --- ANTI-DUPLICAÇÃO (Dedup) ---
+                # Verifica se o usuário fez exatamente a mesma aposta nos últimos 5 segundos
+                tempo_limite = timezone.now() - timezone.timedelta(seconds=5)
+                duplicada = Aposta.objects.filter(
+                    usuario=user,
+                    sorteio=dados['sorteio'],
+                    tipo_jogo=dados['tipo_jogo'],
+                    valor=dados['valor'],
+                    palpite=dados['palpite'],
+                    criado_em__gte=tempo_limite
+                ).exists()
+
+                if duplicada:
+                    return Response(
+                        {"erro": "Você já fez essa aposta agora mesmo. Verifique seu histórico."}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
                 with transaction.atomic():
-                    user = request.user
-                    valor = serializer.validated_data['valor']
+                    # LOCK PESSIMISTA no usuário
+                    user = type(request.user).objects.select_for_update().get(pk=user.pk)
                     
-                    # 1. Debita o saldo
-                    user.saldo -= valor
-                    user.save()
+                    # Validação de Saldo
+                    if user.saldo < dados['valor']:
+                        return Response({"saldo": ["Saldo insuficiente."]}, status=status.HTTP_400_BAD_REQUEST)
                     
-                    # 2. Cria a aposta vinculada ao usuário
-                    serializer.save(usuario=user) 
+                    # VALIDAÇÃO FINAL DE SORTEIO FECHADO
+                    if dados['sorteio'].fechado:
+                         return Response({"sorteio": ["Sorteio encerrado durante o processamento."]}, status=status.HTTP_400_BAD_REQUEST)
+
+                    # Debita e Salva
+                    user.saldo = F('saldo') - dados['valor']
+                    user.total_apostado_rollover = F('total_apostado_rollover') + dados['valor'] 
+                    
+                    user.save(update_fields=['saldo', 'total_apostado_rollover']) 
+                    user.refresh_from_db()
+
+                    aposta_criada = serializer.save(usuario=user) 
+                    
+                    Transacao.objects.create(
+                        usuario=user,
+                        tipo='APOSTA',
+                        valor=dados['valor'],
+                        saldo_anterior=user.saldo + dados['valor'], 
+                        saldo_posterior=user.saldo,
+                        descricao=f"Aposta #{aposta_criada.id} - {aposta_criada.get_tipo_jogo_display()} - {aposta_criada.palpite}"
+                    )
                     
                 return Response(
                     {"mensagem": "Aposta realizada com sucesso!", "novo_saldo": user.saldo}, 
@@ -161,96 +218,211 @@ class RealizarApostaView(APIView):
                 )
             
             except Exception as e:
-                # Se der erro no banco, o saldo não é descontado (rollback automático)
+                # O "str(e)" vai nos contar se é NameError, DatabaseError, etc.
                 return Response(
-                    {"erro": "Erro interno ao processar aposta. Tente novamente."}, 
+                    {"erro": f"ERRO DETALHADO: {str(e)}"}, 
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
 
 class ApuracaoView(APIView):
     """
-    Rota Administrativa: Processa os vencedores de um sorteio.
-    Suporta: GRUPO (18x), CENTENA (600x) e MILHAR (5000x).
+    Motor de Apuração Avançado v2.0
+    Suporta: Cabeça, Invertidas (com cálculo de cota), Passes, Duplas, Ternos, Quadras e Quinas.
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, pk):
+        # 1. Validações Iniciais
+        if Sorteio.objects.filter(pk=pk, fechado=True).exists():
+             return Response({"erro": "Este sorteio já foi apurado e fechado."}, status=status.HTTP_400_BAD_REQUEST)
+
         sorteio = get_object_or_404(Sorteio, pk=pk)
         
-        # O Sorteio precisa ter o resultado lançado no Admin (Premio 1)
-        if not sorteio.premio_1:
-            return Response({"erro": "Lance o resultado (Prêmio 1) no Admin antes de apurar!"}, status=status.HTTP_400_BAD_REQUEST)
+        # Garante que todos os 5 prêmios foram lançados
+        premios_raw = [
+            sorteio.premio_1, sorteio.premio_2, sorteio.premio_3, 
+            sorteio.premio_4, sorteio.premio_5
+        ]
+        if not all(premios_raw):
+            return Response({"erro": "Lance todos os 5 prêmios no Admin antes de apurar jogos complexos!"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # --- GABARITO DO SORTEIO ---
-        resultado_milhar = sorteio.premio_1          # Ex: "1234"
-        resultado_centena = resultado_milhar[-3:]    # Ex: "234"
-        bicho_vencedor = descobrir_bicho(resultado_milhar) # Ex: 9 (Cobra)
+        # 2. Pré-Cálculo do Gabarito (Matriz de Resultados)
+        # Cria uma lista de dicionários com todos os dados de cada prêmio (1 ao 5)
+        gabarito = []
+        for p in premios_raw:
+            gabarito.append({
+                'milhar': p,                  # "1234"
+                'centena': p[-3:],            # "234"
+                'dezena': p[-2:],             # "34"
+                'bicho': descobrir_bicho(p)   # 9 (Cobra)
+            })
+
+        # Conjuntos para busca rápida (Set lookup é O(1))
+        todos_bichos = {g['bicho'] for g in gabarito}       # Ex: {9, 25, 1, ...}
+        todas_dezenas = {g['dezena'] for g in gabarito}     # Ex: {'34', '00', ...}
         
-        # Busca apostas pendentes deste sorteio
-        apostas = Aposta.objects.filter(sorteio=sorteio, ganhou=False)
-        
+        # Cabeça (Prêmio 1) para modalidades clássicas
+        cabeca = gabarito[0]
+
         vencedores_count = 0
-        pagamentos_total = 0.0
+        pagamentos_total = Decimal('0.00')
 
-        with transaction.atomic():
-            for aposta in apostas:
-                ganhou_aposta = False
-                multiplicador = 0.0
+        try:
+            with transaction.atomic():
+                sorteio_travado = Sorteio.objects.select_for_update().get(pk=pk)
+                if sorteio_travado.fechado:
+                    return Response({"erro": "Concorrência: Sorteio fechado durante processamento."}, status=status.HTTP_400_BAD_REQUEST)
 
-                # --- REGRA 1: MILHAR (M) - Paga 5.000x ---
-                if aposta.tipo_jogo == 'M':
-                    if aposta.palpite == resultado_milhar: # Tem que ser igualzinho
+                apostas = Aposta.objects.filter(sorteio=sorteio_travado, ganhou=False).select_for_update()
+
+                for aposta in apostas:
+                    ganhou_aposta = False
+                    multiplicador = Decimal('0.0')
+                    tipo = aposta.tipo_jogo
+                    palpite = aposta.palpite.strip()
+
+                    # --- MODALIDADES DE CABEÇA (CLÁSSICAS) ---
+                    if tipo == 'M' and palpite == cabeca['milhar']:
                         ganhou_aposta = True
-                        multiplicador = 5000.0
+                        multiplicador = Decimal('6000.0')
 
-                # --- REGRA 2: CENTENA (C) - Paga 600x ---
-                elif aposta.tipo_jogo == 'C':
-                    if aposta.palpite == resultado_centena: # Últimos 3 dígitos
+                    elif tipo == 'C' and palpite == cabeca['centena']:
                         ganhou_aposta = True
-                        multiplicador = 600.0
+                        multiplicador = Decimal('600.0')
 
-                # --- REGRA 3: GRUPO (G) - Paga 18x ---
-                elif aposta.tipo_jogo == 'G':
-                    # O palpite vem como string "1", convertemos pra int pra comparar com o bicho
-                    if int(aposta.palpite) == bicho_vencedor:
+                    elif tipo == 'D' and palpite == cabeca['dezena']:
                         ganhou_aposta = True
-                        multiplicador = 18.0
+                        multiplicador = Decimal('60.0')
+                    
+                    elif tipo == 'G' and int(palpite) == cabeca['bicho']:
+                        ganhou_aposta = True
+                        multiplicador = Decimal('18.0')
 
-                # --- PAGAMENTO ---
-                if ganhou_aposta:
-                    premio = float(aposta.valor) * multiplicador
-                    
-                    # 1. Marca como ganho
-                    aposta.ganhou = True
-                    aposta.valor_premio = premio
-                    aposta.save()
-                    
-                    # 2. Paga o Usuário
-                    usuario = aposta.usuario
-                    usuario.saldo += Decimal(premio)
-                    usuario.save()
-                    
-                    vencedores_count += 1
-                    pagamentos_total += premio
-        
-        # Fecha o sorteio
-        sorteio.fechado = True
-        sorteio.save()
+                    elif tipo == 'MC':
+                        if palpite == cabeca['milhar']:
+                            ganhou_aposta = True
+                            multiplicador = Decimal('3300.0')
+                        elif palpite[-3:] == cabeca['centena']:
+                            ganhou_aposta = True
+                            multiplicador = Decimal('300.0')
 
-        return Response({
-            "mensagem": "Apuração realizada com sucesso!",
-            "resultados": {
-                "milhar": resultado_milhar,
-                "centena": resultado_centena,
-                "bicho_vencedor": bicho_vencedor
-            },
-            "vencedores": vencedores_count,
-            "total_pago": pagamentos_total
-        }, status=status.HTTP_200_OK)
-    
+                    # --- MODALIDADES INVERTIDAS (Permutações na Cabeça) ---
+                    elif tipo in ['MI', 'CI', 'DI']:
+                        # Define alvo e base
+                        if tipo == 'MI': 
+                            alvo, base_fator = cabeca['milhar'], Decimal('6000.0')
+                        elif tipo == 'CI': 
+                            alvo, base_fator = cabeca['centena'], Decimal('600.0')
+                        else:              
+                            alvo, base_fator = cabeca['dezena'], Decimal('60.0')
+
+                        # Lógica: Ordena as strings para ver se contêm os mesmos dígitos
+                        # Ex: Palpite "1234" ganha de Resultado "4321" -> sorted("1234") == sorted("4321")
+                        if sorted(palpite) == sorted(alvo):
+                            ganhou_aposta = True
+                            # Cálculo Matemático: Divide o prêmio pelo número de permutações possíveis
+                            # Ex: "1234" tem 24 combinações. Prêmio é 6000/24 = 250x.
+                            # Ex: "1122" tem 6 combinações. Prêmio é 6000/6 = 1000x.
+                            counts = Counter(palpite)
+                            permutacoes = math.factorial(len(palpite))
+                            for count in counts.values():
+                                permutacoes //= math.factorial(count)
+                            
+                            multiplicador = base_fator / Decimal(permutacoes)
+
+                    # --- MODALIDADES DE GRUPO (1º ao 5º) ---
+                    elif tipo in ['DG', 'TG', 'QG', 'QNG']:
+                        # Helper: Transforma "01, 02" em [1, 2]
+                        try:
+                            grupos_apostados = {int(x) for x in palpite.replace(',', ' ').split() if x.strip()}
+                        except ValueError:
+                            continue # Pula aposta se palpite for inválido
+
+                        # Verifica se TODOS os grupos apostados estão no sorteio (Subset)
+                        if grupos_apostados.issubset(todos_bichos):
+                            ganhou_aposta = True
+                            if tipo == 'DG' and len(grupos_apostados) >= 2: multiplicador = Decimal('16.0')
+                            elif tipo == 'TG' and len(grupos_apostados) >= 3: multiplicador = Decimal('150.0')
+                            elif tipo == 'QG' and len(grupos_apostados) >= 4: multiplicador = Decimal('1000.0')
+                            elif tipo == 'QNG' and len(grupos_apostados) >= 5: multiplicador = Decimal('5000.0')
+
+                    # --- MODALIDADES DE DEZENA (1º ao 5º) ---
+                    elif tipo in ['DD', 'TD']:
+                        try:
+                            dezenas_apostadas = {x.strip() for x in palpite.replace(',', ' ').split() if x.strip()}
+                        except: continue
+
+                        if dezenas_apostadas.issubset(todas_dezenas):
+                            ganhou_aposta = True
+                            if tipo == 'DD' and len(dezenas_apostadas) >= 2: multiplicador = Decimal('300.0')
+                            elif tipo == 'TD' and len(dezenas_apostadas) >= 3: multiplicador = Decimal('5000.0')
+
+                    # --- PASSES (Vai e Vai-Vem) ---
+                    elif tipo in ['PV', 'PVV']:
+                        try:
+                            # Palpite esperado: "Grupo1, Grupo2"
+                            parts = [int(x) for x in palpite.replace(',', ' ').split() if x.strip()]
+                            if len(parts) >= 2:
+                                g1, g2 = parts[0], parts[1]
+                                
+                                # PV: G1 na Cabeça + G2 em qualquer outro prêmio (2-5)
+                                # PVV: (G1 na Cabeça + G2 no resto) OU (G2 na Cabeça + G1 no resto)
+                                
+                                # Lista de bichos do 2º ao 5º prêmio
+                                bichos_resto = {g['bicho'] for g in gabarito[1:]} # Índices 1 a 4
+                                
+                                condicao_ida = (g1 == cabeca['bicho'] and g2 in bichos_resto)
+                                condicao_volta = (g2 == cabeca['bicho'] and g1 in bichos_resto)
+
+                                if tipo == 'PV' and condicao_ida:
+                                    ganhou_aposta = True
+                                    multiplicador = Decimal('90.0')
+                                elif tipo == 'PVV' and (condicao_ida or condicao_volta):
+                                    ganhou_aposta = True
+                                    multiplicador = Decimal('90.0')
+                        except:
+                            continue
+
+                    # --- PAGAMENTO ---
+                    if ganhou_aposta:
+                        premio = aposta.valor * multiplicador
+                        aposta.ganhou = True
+                        aposta.valor_premio = premio
+                        aposta.save()
+                        
+                        # Atualiza Saldo do Usuário
+                        user_update = type(aposta.usuario).objects.select_for_update().get(pk=aposta.usuario.pk)
+                        saldo_ant = user_update.saldo
+                        user_update.saldo = F('saldo') + premio
+                        user_update.save()
+                        user_update.refresh_from_db()
+                        
+                        # Gera Extrato
+                        Transacao.objects.create(
+                            usuario=user_update,
+                            tipo='PREMIO',
+                            valor=premio,
+                            saldo_anterior=saldo_ant,
+                            saldo_posterior=user_update.saldo,
+                            descricao=f"Prêmio {aposta.get_tipo_jogo_display()} (Sorteio #{sorteio.id})"
+                        )
+                        vencedores_count += 1
+                        pagamentos_total += premio
+            
+                sorteio_travado.fechado = True
+                sorteio_travado.save()
+
+            return Response({
+                "mensagem": "Apuração Avançada concluída!",
+                "vencedores": vencedores_count,
+                "total_pago": pagamentos_total,
+                "gabarito_bichos": list(todos_bichos) # Retorna quem deu pra conferência
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({"erro": f"Erro Crítico na Apuração: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     # --- VIEW VISUAL (HTML) ---
 

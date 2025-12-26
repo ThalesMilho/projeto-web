@@ -15,17 +15,12 @@ class CriarApostaSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         """
-        Validações de Regra de Negócio antes de mexer no dinheiro.
+        Validações de Regra de Negócio (Sorteio fechado).
+        NOTA: A validação de saldo foi movida para a View (dentro da transação atômica).
         """
-        user = self.context['request'].user
         sorteio = data['sorteio']
-        valor_aposta = data['valor']
 
-        # 1. Valida se tem saldo
-        if user.saldo < valor_aposta:
-            raise serializers.ValidationError({"saldo": "Saldo insuficiente para esta aposta."})
-
-        # 2. Valida se o sorteio está fechado
+        # Valida se o sorteio está fechado
         if sorteio.fechado:
             raise serializers.ValidationError({"sorteio": "Este sorteio já foi encerrado."})
 

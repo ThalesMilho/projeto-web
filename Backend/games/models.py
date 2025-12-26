@@ -38,21 +38,35 @@ class Sorteio(models.Model):
 # 3. A Aposta (O Ticket)
 class Aposta(models.Model):
     TIPOS_JOGO = [
-        ('G', 'Grupo'),           # Apostar no bicho (ex: Leão)
-        ('D', 'Dezena'),          # Apostar na dezena (ex: 62)
-        ('C', 'Centena'),         # Apostar na centena (ex: 162)
-        ('M', 'Milhar'),          # Apostar na milhar (ex: 8162)
-        ('MC', 'Milhar/Centena'), # Aposta combinada
+        # --- BÁSICOS ---
+        ('G', 'Grupo'),           
+        ('D', 'Dezena'),          
+        ('C', 'Centena'),         
+        ('M', 'Milhar'),          
+        ('MC', 'Milhar/Centena'), 
+
+        # --- NOVOS ---
+        ('DG', 'Dupla de Grupo'),
+        ('TG', 'Terno de Grupo'),
+        ('QG', 'Quadra de Grupo'),
+        ('QNG', 'Quina de Grupo'),
+        ('DD', 'Duque de Dezena'),
+        ('TD', 'Terno de Dezena'),
+        ('PV', 'Passe Vai'),
+        ('PVV', 'Passe Vai e Vem'),
+        ('MI', 'Milhar Invertida'),
+        ('CI', 'Centena Invertida'),
+        ('DI', 'Dezena Invertida'),
     ]
 
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='apostas')
     sorteio = models.ForeignKey(Sorteio, on_delete=models.PROTECT, related_name='apostas')
     
-    tipo_jogo = models.CharField(max_length=2, choices=TIPOS_JOGO)
+    tipo_jogo = models.CharField(max_length=3, choices=TIPOS_JOGO)
     valor = models.DecimalField(max_digits=10, decimal_places=2) # Quanto o usuário apostou
     
     # O palpite (Pode ser o número do grupo "16" ou a milhar "1234")
-    palpite = models.CharField(max_length=4) 
+    palpite = models.CharField(max_length=50)
     
     criado_em = models.DateTimeField(auto_now_add=True)
     ganhou = models.BooleanField(default=False)
