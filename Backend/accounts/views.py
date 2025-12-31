@@ -92,44 +92,30 @@ class SimularDepositoView(APIView):
                 usuario = CustomUser.objects.select_for_update().get(id=user_id)
                 
                 # --- Lógica do Bônus ---
-                bonus = Decimal('0.00')
-                if not usuario.recebeu_bonus:
-                    # 100% de bônus limitado a R$ 100,00
-                    bonus = valor if valor <= 100 else Decimal('100.00')
-                    usuario.recebeu_bonus = True
-                    
-                    # Define a meta de aposta (Rollover 2x)
-                    total_creditado = valor + bonus
-                    usuario.meta_rollover = total_creditado * 2
-                
-                # Atualiza Saldo
+                bonus =usuario.aplicar_bonus_deposito(valor)
                 saldo_anterior = usuario.saldo
                 usuario.saldo += valor + bonus
                 usuario.save()
-
-                # Gera Extrato (Depósito)
                 Transacao.objects.create(
                     usuario=usuario,
                     tipo='DEPOSITO',
                     valor=valor,
                     saldo_anterior=saldo_anterior,
-                    saldo_posterior=saldo_anterior + valor,
-                    descricao="Depósito via Pix (Simulado)"
+                    saldo_posterior=usuario.saldo,
+                    descricao=f"Depósito Simulado via Webhook. Bônus aplicado: R$ {bonus:.2f}"
                 )
 
-                # Gera Extrato (Bônus, se houver)
-                if bonus > 0:
+                if bonus > 0 :
                     Transacao.objects.create(
                         usuario=usuario,
                         tipo='BONUS',
                         valor=bonus,
-                        saldo_anterior=saldo_anterior + valor,
+                        saldo_anterior=usuario.saldo + valor,
                         saldo_posterior=usuario.saldo,
-                        descricao="Bônus de Boas-vindas (100%)"
+                        descricao="Bônus de Boas-Vindas(100%)"
                     )
-
             return Response({
-                "mensagem": "Depósito realizado!",
+                "mensagem": "Depósito simulado com sucesso!",
                 "saldo_atual": usuario.saldo,
                 "bonus_aplicado": bonus,
                 "meta_rollover": usuario.meta_rollover

@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
+from decimal import Decimal 
 
 class CustomUserManager(BaseUserManager):
     """
@@ -39,12 +40,11 @@ class CustomUser(AbstractUser):
     nome_completo = models.CharField(max_length=255, verbose_name="Nome Completo")
     cpf_cnpj = models.CharField(max_length=14, unique=True, verbose_name="CPF ou CNPJ")
     phone = models.CharField(max_length=15, blank=True, null=True, verbose_name="WhatsApp")
-    saldo = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, verbose_name="Saldo em Conta")
-    
+    saldo = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Saldo em Conta")    
     # --- SISTEMA DE BÔNUS ---
     recebeu_bonus = models.BooleanField(default=False)
-    meta_rollover = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
-    total_apostado_rollover = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    meta_rollover = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_apostado_rollover = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
 
     # Configurações do Django
     username = models.CharField(max_length=150, blank=True, null=True)
@@ -59,7 +59,7 @@ class CustomUser(AbstractUser):
         return self.cpf_cnpj
 
     def pode_sacar(self):
-        if self.meta_rollover <= 0: return True
+        if self.meta_rollover <= Decimal('0.00'): return True
         return self.total_apostado_rollover >= self.meta_rollover
 
     # --- A FUNÇÃO QUE FALTAVA ---
@@ -67,6 +67,17 @@ class CustomUser(AbstractUser):
         """Retorna quanto falta apostar para liberar o saque"""
         falta = self.meta_rollover - self.total_apostado_rollover
         return falta if falta > 0 else 0
+    def aplicar_bonus_deposito(self, valor_deposito):
+
+        bonus = Decimal('0.00')
+        if not self.recebeu_bonus:
+            teto_bonus = Decimal('500.00')
+            bonus = valor_deposito if valor_deposito <= teto_bonus else teto_bonus
+            self.recebeu_bonus = True
+            base_calculo = valor_deposito + bonus
+            acrescimo_rollover = base_calculo * 2
+            self.meta_rollover += acrescimo_rollover
+        return bonus
     
 class Transacao(models.Model):
     TIPO_CHOICES = [
@@ -75,6 +86,7 @@ class Transacao(models.Model):
         ('DEPOSITO', 'Crédito - Depósito'),
         ('SAQUE', 'Débito - Saque'),
         ('ESTORNO', 'Crédito - Estorno'),
+        ('BONUS', 'Crédito - Bônus'),
     ]
     
     usuario = models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='extrato')

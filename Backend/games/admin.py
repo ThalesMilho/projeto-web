@@ -1,12 +1,43 @@
 from django.contrib import admin
 from django.db.models import Sum, Count
 from django.utils.html import format_html
-from .models import Bicho, Sorteio, Aposta
+from .models import Bicho, Sorteio, Aposta, ParametrosDoJogo
 
 # Configuração do Título do Painel
 admin.site.site_header = "Sistema do Bicho - Backoffice"
 admin.site.site_title = "Admin Bicho"
 admin.site.index_title = "Gestão da Banca"
+
+# --- Configuração do Singleton (ParametrosDoJogo) ---
+@admin.register(ParametrosDoJogo)
+class ParametrosDoJogoAdmin(admin.ModelAdmin):
+    # Organiza os campos em sessões visuais
+    fieldsets = (
+        ('Status Geral', {
+            'fields': ('ativa_apostas',),
+            'description': 'Controle mestre para ligar/desligar o sistema de apostas.'
+        }),
+        ('Cotações Base (Multiplicadores)', {
+            'fields': ('cotacao_grupo', 'cotacao_dezena', 'cotacao_centena', 'cotacao_milhar'),
+            'description': 'Defina por quanto o valor apostado será multiplicado em caso de vitória.'
+        }),
+        ('Cotações Combinadas', {
+            'fields': ('cotacao_milhar_centena',),
+            'classes': ('collapse',), 
+        }),
+        ('Segurança Financeira', {
+            'fields': ('premio_maximo_aposta',),
+            'description': 'Travas para evitar quebra da banca.'
+        }),
+    )
+
+    # Remove botão "Adicionar" se já existir
+    def has_add_permission(self, request):
+        return not ParametrosDoJogo.objects.exists()
+
+    # Remove botão "Deletar"
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 @admin.register(Bicho)
 class BichoAdmin(admin.ModelAdmin):
@@ -17,11 +48,11 @@ class BichoAdmin(admin.ModelAdmin):
 @admin.register(Sorteio)
 class SorteioAdmin(admin.ModelAdmin):
     list_display = ('__str__', 'fechado', 'total_apostas', 'faturamento', 'premiacao', 'lucro_banca', 'status_cor')
+    actions = ['fechar_sorteios', 'reabrir_sorteios', 'apurar_apuracao_action']
     list_filter = ('fechado', 'horario', 'data')
     search_fields = ['id', 'data']
-    actions = ['fechar_sorteios', 'reabrir_sorteios']
     readonly_fields = ('faturamento', 'premiacao', 'lucro_banca')
-
+    
     # --- COLUNAS CALCULADAS (Métricas de Negócio) ---
 
     def total_apostas(self, obj):
@@ -60,6 +91,29 @@ class SorteioAdmin(admin.ModelAdmin):
     @admin.action(description="🔓 Reabrir Sorteios Selecionados")
     def reabrir_sorteios(self, request, queryset):
         queryset.update(fechado=False)
+
+    # ... (mantenha os métodos fechar_sorteios e reabrir_sorteios que já existem) ...
+
+    # --- COLE ISTO NO FINAL DA CLASSE SORTEIOADMIN ---
+    @admin.action(description="🎲 Apurar Resultados (Calcular Prêmios)")
+    def apurar_apuracao_action(self, request, queryset):
+        processados = 0
+        erros = 0
+        
+        for sorteio in queryset:
+            if sorteio.premio_1:
+                # Chama a lógica que está no models.py
+                sucesso = sorteio.apurar_resultados()
+                if sucesso:
+                    processados += 1
+            else:
+                erros += 1
+        
+        if processados > 0:
+            self.message_user(request, f"{processados} sorteio(s) processados!", "success")
+        if erros > 0:
+            self.message_user(request, f"{erros} ignorados (sem prêmio cadastrado).", "warning")
+
 
 @admin.register(Aposta)
 class ApostaAdmin(admin.ModelAdmin):
