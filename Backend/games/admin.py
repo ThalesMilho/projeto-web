@@ -13,21 +13,32 @@ admin.site.index_title = "Gestão da Banca"
 class ParametrosDoJogoAdmin(admin.ModelAdmin):
     # Organiza os campos em sessões visuais
     fieldsets = (
-        ('Status Geral', {
-            'fields': ('ativa_apostas',),
-            'description': 'Controle mestre para ligar/desligar o sistema de apostas.'
+        ('Controle Geral', {
+            'fields': ('ativa_apostas', 'premio_maximo_aposta')
         }),
-        ('Cotações Base (Multiplicadores)', {
-            'fields': ('cotacao_grupo', 'cotacao_dezena', 'cotacao_centena', 'cotacao_milhar'),
-            'description': 'Defina por quanto o valor apostado será multiplicado em caso de vitória.'
+        ('Cotações Bicho (Padrão)', {
+            'fields': ('cotacao_grupo', 'cotacao_dezena', 'cotacao_centena', 'cotacao_milhar', 'cotacao_milhar_centena'),
+            'description': 'Multiplicadores para os jogos clássicos.'
         }),
-        ('Cotações Combinadas', {
-            'fields': ('cotacao_milhar_centena',),
+        ('Cotações Especiais (Pix Legal)', {
+            'fields': (
+                'cotacao_milhar_invertida', 'cotacao_centena_invertida',
+                'cotacao_duque_grupo', 'cotacao_terno_grupo', 'cotacao_quadra_grupo', 'cotacao_quina_grupo',
+                'cotacao_passe_vai', 'cotacao_passe_vai_vem'
+            ),
             'classes': ('collapse',), 
         }),
-        ('Segurança Financeira', {
-            'fields': ('premio_maximo_aposta',),
-            'description': 'Travas para evitar quebra da banca.'
+        ('Configuração Loterias (Regras de Acerto)', {
+            'fields': (
+                'quininha_acertos_necessarios', 
+                'seninha_acertos_necessarios', 
+                'lotinha_acertos_necessarios'
+            ),
+            'description': 'Quantos acertos para ganhar?'
+        }),
+        ('Tabelas de Pagamento (JSON)', {
+            'fields': ('tabela_quininha', 'tabela_seninha', 'tabela_lotinha'),
+            'description': 'Edite o JSON: {"DezenasJogadas": Multiplicador}'
         }),
     )
 

@@ -231,6 +231,16 @@ class ApostaViewSet(mixins.CreateModelMixin,
         return ApostaDetalheSerializer
 
     def create(self, request, *args, **kwargs):
+        # --- NOVO: VERIFICAÇÃO DO KILL SWITCH ---
+        # Antes de qualquer coisa, checa se o sistema está ligado no Admin
+        config = ParametrosDoJogo.load()
+        if not config.ativa_apostas:
+            return Response(
+                {"erro": "O sistema de apostas está temporariamente suspenso."}, 
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        # ----------------------------------------
+
         # Validação inicial dos dados
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)

@@ -1,6 +1,23 @@
 from django.db import models
 from django.conf import settings 
 from django.core.cache import cache 
+from .utils import (
+    pegar_bicho, gerar_invertidas, extrair_resultado_completo, extrair_dezenas_sorteio,
+    DEFAULT_COTACAO_QUININHA, DEFAULT_COTACAO_SENINHA, DEFAULT_COTACAO_LOTINHA
+)
+
+# --- ADICIONE ISTO AQUI (Funções para corrigir o Warning) ---
+def get_default_quininha():
+    return DEFAULT_COTACAO_QUININHA
+
+
+def get_default_seninha():
+    return DEFAULT_COTACAO_SENINHA
+
+
+def get_default_lotinha():
+    return DEFAULT_COTACAO_LOTINHA
+# -----------------------------------------------------------
 
 # 0. Configurações Globais (Singleton)
 class ParametrosDoJogo(models.Model):
@@ -11,9 +28,29 @@ class ParametrosDoJogo(models.Model):
     cotacao_centena = models.DecimalField("Centena (600x)", max_digits=6, decimal_places=2, default=600.0)
     cotacao_milhar = models.DecimalField("Milhar (4000x)", max_digits=6, decimal_places=2, default=4000.0)
     
-    # Cotações Combinadas (Exemplos, podemos adicionar mais depois)
+    # Cotações Combinadas
     cotacao_milhar_centena = models.DecimalField("Milhar/Centena (4400x)", max_digits=7, decimal_places=2, default=4400.0)
+    cotacao_milhar_invertida = models.DecimalField("Milhar Invertida", max_digits=7, decimal_places=2, default=8000.0)
+    cotacao_centena_invertida = models.DecimalField("Centena Invertida", max_digits=6, decimal_places=2, default=800.0)
     
+    cotacao_duque_grupo = models.DecimalField("Duque de Grupo", max_digits=6, decimal_places=2, default=200.0)
+    cotacao_terno_grupo = models.DecimalField("Terno de Grupo", max_digits=6, decimal_places=2, default=1500.0)
+    cotacao_quadra_grupo = models.DecimalField("Quadra de Grupo", max_digits=6, decimal_places=2, default=1000.0)
+    cotacao_quina_grupo = models.DecimalField("Quina de Grupo", max_digits=6, decimal_places=2, default=1000.0)
+    
+    cotacao_passe_vai = models.DecimalField("Passe Vai", max_digits=6, decimal_places=2, default=90.0)
+    cotacao_passe_vai_vem = models.DecimalField("Passe Vai e Vem", max_digits=6, decimal_places=2, default=45.0)
+
+    # 1. Acertos necessários (Editável no Admin)
+    quininha_acertos_necessarios = models.IntegerField("Quininha - Acertos p/ Ganhar", default=5, help_text="Padrão: 5")
+    seninha_acertos_necessarios = models.IntegerField("Seninha - Acertos p/ Ganhar", default=6, help_text="Padrão: 6")
+    lotinha_acertos_necessarios = models.IntegerField("Lotinha - Acertos p/ Ganhar", default=5, help_text="Padrão: 5")
+
+    # 2. Tabelas JSON (Quanto paga)
+    tabela_quininha = models.JSONField("Tabela Pagamento Quininha", default=get_default_quininha)
+    tabela_seninha = models.JSONField("Tabela Pagamento Seninha", default=get_default_seninha)
+    tabela_lotinha = models.JSONField("Tabela Pagamento Lotinha", default=get_default_lotinha)
+
     # --- Segurança Financeira ---
     premio_maximo_aposta = models.DecimalField(
         "Teto Máximo (R$)", 
@@ -131,8 +168,15 @@ class Aposta(models.Model):
         ('PVV', 'Passe Vai e Vem'),
         ('MI', 'Milhar Invertida'),
         ('CI', 'Centena Invertida'),
-        ('DI', 'Dezena Invertida'),
-    ]
+        ('DI', 'Dezena Invertida'),  
+        ('MI', 'Milhar Invertida'),
+        ('CI', 'Centena Invertida'),
+        ('DI', 'Dezena Invertida'), 
+    # --- Loterias ---
+        ('QU', 'Quininha'), 
+        ('SE', 'Seninha'), 
+        ('LO', 'Lotinha'),
+]                               
 
     usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='apostas')
     sorteio = models.ForeignKey(Sorteio, on_delete=models.PROTECT, related_name='apostas')
@@ -141,7 +185,7 @@ class Aposta(models.Model):
     valor = models.DecimalField(max_digits=10, decimal_places=2) # Quanto o usuário apostou
     
     # O palpite (Pode ser o número do grupo "16" ou a milhar "1234")
-    palpite = models.CharField(max_length=50)
+    palpite = models.CharField(max_length=255)
     
     criado_em = models.DateTimeField(auto_now_add=True)
     ganhou = models.BooleanField(default=False)
@@ -152,25 +196,42 @@ class Aposta(models.Model):
     
 
     def calcular_premio_estimado(self):
-        """
-        Consulta o Singleton ParametrosDoJogo para saber quanto pagar.
-        """
         config = ParametrosDoJogo.load() 
-        multiplicador = 0
-        
-        # Mapeia o tipo de jogo para o campo da config
-        if self.tipo_jogo == 'G': multiplicador = config.cotacao_grupo
+        multiplicador = 0.0
+
+        # 1. CÁLCULO PARA LOTERIAS
+        if self.tipo_jogo in ['QU', 'SE', 'LO']:
+            qtde_jogada = str(len(self.palpite.replace('-', ',').split(',')))
+            tabela = {}
+            if self.tipo_jogo == 'QU': tabela = config.tabela_quininha
+            elif self.tipo_jogo == 'SE': tabela = config.tabela_seninha
+            elif self.tipo_jogo == 'LO': tabela = config.tabela_lotinha
+
+            multiplicador = float(tabela.get(qtde_jogada, 0))
+
+        # 2. CÁLCULO PARA JOGOS TRADICIONAIS
+        elif self.tipo_jogo == 'G': multiplicador = config.cotacao_grupo
         elif self.tipo_jogo == 'D': multiplicador = config.cotacao_dezena
         elif self.tipo_jogo == 'C': multiplicador = config.cotacao_centena
         elif self.tipo_jogo == 'M': multiplicador = config.cotacao_milhar
         elif self.tipo_jogo == 'MC': multiplicador = config.cotacao_milhar_centena
-            
-        premio = self.valor * multiplicador
-        
-        # Aplica o teto máximo
-        if premio > config.premio_maximo_aposta:
-            premio = config.premio_maximo_aposta
-            
+
+        elif self.tipo_jogo == 'MI': multiplicador = config.cotacao_milhar_invertida
+        elif self.tipo_jogo == 'CI': multiplicador = config.cotacao_centena_invertida
+
+        elif self.tipo_jogo == 'DG': multiplicador = config.cotacao_duque_grupo
+        elif self.tipo_jogo == 'TG': multiplicador = config.cotacao_terno_grupo
+        elif self.tipo_jogo == 'QG': multiplicador = config.cotacao_quadra_grupo
+        elif self.tipo_jogo == 'QNG': multiplicador = config.cotacao_quina_grupo
+
+        elif self.tipo_jogo == 'PV': multiplicador = config.cotacao_passe_vai
+        elif self.tipo_jogo == 'PVV': multiplicador = config.cotacao_passe_vai_vem
+
+        premio = float(self.valor) * float(multiplicador)
+
+        if premio > float(config.premio_maximo_aposta):
+            premio = float(config.premio_maximo_aposta)
+
         return premio
 
     @staticmethod
@@ -186,25 +247,59 @@ class Aposta(models.Model):
             return None
 
     def verificar_acerto(self):
-        """
-        Lógica matemática para validar se ganhou (Focada no 1º Prêmio/Cabeça).
-        """
-        if not self.sorteio or not self.sorteio.premio_1:
-            return False 
+        config = ParametrosDoJogo.load()
 
-        palpite = str(self.palpite).strip()
-        resultado = str(self.sorteio.premio_1).strip()
+        if not self.sorteio or not self.sorteio.premio_1: return False 
 
-        if self.tipo_jogo == 'M': # Milhar
-            return palpite == resultado
-        elif self.tipo_jogo == 'C': # Centena
-            return resultado.endswith(palpite)
-        elif self.tipo_jogo == 'D': # Dezena
-            return resultado.endswith(palpite)
-        elif self.tipo_jogo == 'G': # Grupo
-            grupo_sorteado = self.descobrir_grupo(resultado)
-            return int(palpite) == grupo_sorteado
-        elif self.tipo_jogo == 'MC': # Milhar e Centena
-             return palpite == resultado or resultado.endswith(palpite[1:])
-            
+        palpite_str = str(self.palpite).strip()
+
+        # --- A. VALIDAÇÃO DE LOTERIAS ---
+        if self.tipo_jogo in ['QU', 'SE', 'LO']:
+            numeros_apostados = set([n.strip() for n in palpite_str.replace('-', ',').split(',')])
+            dezenas_sorteadas = set(extrair_dezenas_sorteio(self.sorteio))
+
+            qtd_acertos = len(numeros_apostados.intersection(dezenas_sorteadas))
+
+            if self.tipo_jogo == 'QU': return qtd_acertos >= config.quininha_acertos_necessarios
+            if self.tipo_jogo == 'SE': return qtd_acertos >= config.seninha_acertos_necessarios
+            if self.tipo_jogo == 'LO': return qtd_acertos >= config.lotinha_acertos_necessarios
+            return False
+
+        # --- B. VALIDAÇÃO DO BICHO TRADICIONAL ---
+        resultados = extrair_resultado_completo(self.sorteio)
+        cabeca = resultados[0] if resultados else None
+        if not cabeca: return False
+
+        if self.tipo_jogo == 'M': return palpite_str == cabeca['milhar']
+        elif self.tipo_jogo == 'C': return cabeca['milhar'].endswith(palpite_str)
+        elif self.tipo_jogo == 'D': return cabeca['milhar'].endswith(palpite_str)
+        elif self.tipo_jogo == 'G': return int(palpite_str) == cabeca['grupo']
+        elif self.tipo_jogo == 'MC': return palpite_str == cabeca['milhar'] or cabeca['milhar'].endswith(palpite_str[1:])
+
+        elif self.tipo_jogo == 'MI': return cabeca['milhar'] in gerar_invertidas(palpite_str)
+        elif self.tipo_jogo == 'CI': return cabeca['centena'] in gerar_invertidas(palpite_str)
+
+        elif self.tipo_jogo in ['DG', 'TG', 'QG', 'QNG']:
+            grupos_apostados = [int(g) for g in palpite_str.replace('-',',').split(',')]
+            grupos_sorteados = [r['grupo'] for r in resultados]
+            acertos = set(grupos_apostados).intersection(set(grupos_sorteados))
+
+            if self.tipo_jogo == 'DG': return len(acertos) >= 2
+            if self.tipo_jogo == 'TG': return len(acertos) >= 3
+            if self.tipo_jogo == 'QG': return len(acertos) >= 4
+            if self.tipo_jogo == 'QNG': return len(acertos) >= 5
+
+        elif self.tipo_jogo == 'PV':
+            grupos_apostados = [int(g) for g in palpite_str.replace('-',',').split(',')]
+            if len(grupos_apostados) < 2: return False
+            if cabeca['grupo'] != grupos_apostados[0]: return False
+            restante = [r['grupo'] for r in resultados[1:]]
+            return grupos_apostados[1] in restante
+
+        elif self.tipo_jogo == 'PVV':
+             grupos_apostados = [int(g) for g in palpite_str.replace('-',',').split(',')]
+             grupos_sorteados = [r['grupo'] for r in resultados]
+             acertos = set(grupos_apostados).intersection(set(grupos_sorteados))
+             return len(acertos) >= 2
+
         return False

@@ -176,3 +176,5 @@ LOGGING = {
         'level': 'INFO', # Em produção, mudamos para 'WARNING'
     },
 }
+
+SKALEPAY_SECRET_KEY = '123456'

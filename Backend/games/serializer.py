@@ -14,19 +14,35 @@ class CriarApostaSerializer(serializers.ModelSerializer):
         fields = ['sorteio', 'tipo_jogo', 'valor', 'palpite']
 
     def validate(self, data):
-        """
-        Validações de Regra de Negócio.
-        """
         sorteio = data['sorteio']
-
-        # 1. Valida se o sorteio está fechado
-        if sorteio.fechado:
-            raise serializers.ValidationError({"sorteio": "Este sorteio já foi encerrado."})
-
-        # 2. NOVA VALIDAÇÃO: Verifica se o sistema está ativo no Admin (Singleton)
+        tipo_jogo = data['tipo_jogo']
+        palpite = data['palpite']
+        
+        # Valida Configuração Global
         config = ParametrosDoJogo.load()
         if not config.ativa_apostas:
             raise serializers.ValidationError("O sistema de apostas está temporariamente suspenso pelo administrador.")
+            
+        # Valida Sorteio
+        if sorteio.fechado:
+            raise serializers.ValidationError({"sorteio": "Este sorteio já foi encerrado."})
+
+        # --- NOVA VALIDAÇÃO: FORMATO LOTERIA ---
+        if tipo_jogo in ['QU', 'SE', 'LO']:
+            try:
+                # Remove espaços, divide por vírgula e limpa vazios
+                numeros = [n.strip() for n in palpite.replace('-', ',').split(',') if n.strip()]
+                
+                if len(numeros) == 0:
+                    raise ValueError
+                
+                # Testa se são todos números
+                for n in numeros:
+                    int(n)
+            except Exception:
+                raise serializers.ValidationError({
+                    "palpite": "Formato inválido. Use números separados por vírgula. Ex: 01,02,03..."
+                })
 
         return data
     

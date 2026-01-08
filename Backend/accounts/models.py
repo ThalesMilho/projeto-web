@@ -79,6 +79,63 @@ class CustomUser(AbstractUser):
             self.meta_rollover += acrescimo_rollover
         return bonus
     
+class SolicitacaoPagamento(models.Model):
+    TIPO_CHOICES = [
+        ('DEPOSITO', 'Depósito'),
+        ('SAQUE', 'Saque'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('PENDENTE', 'Pendente'),
+        ('APROVADO', 'Aprovado'),
+        ('RECUSADO', 'Recusado/Falhou'),
+        ('CANCELADO', 'Cancelado'),
+        ('EM_ANALISE', 'Em Análise (Compliance)'), 
+    ]
+
+    usuario = models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='solicitacoes')
+    tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
+    valor = models.DecimalField(max_digits=12, decimal_places=2)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDENTE')
+    
+    # Integração com Fintech (SkalePay)
+    id_externo = models.CharField(max_length=100, unique=True, null=True, blank=True, verbose_name="ID da Transação na SkalePay")
+    qr_code = models.TextField(null=True, blank=True) 
+    qr_code_url = models.URLField(null=True, blank=True)
+    
+    # Auditoria e Controle
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    aprovado_por = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='aprovacoes_financeiras')
+
+    def __str__(self):
+        return f"{self.tipo} - {self.usuario} - {self.get_status_display()} - R$ {self.valor}"
+
+# --- NOVO MODELO: ETL / DASHBOARD OTIMIZADO ---
+class MetricasDiarias(models.Model):
+    """
+    Tabela de resumo atualizada 1x por dia (Job) para não travar o banco.
+    """
+    data = models.DateField(unique=True, db_index=True)
+    
+    # Financeiro (Caixa)
+    total_deposito = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+    total_saque = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+    receita_liquida = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00')) # House Edge Real
+    
+    # Operacional (Apostas)
+    total_apostado = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+    total_premios = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+    
+    # KPIs de Crescimento
+    novos_usuarios = models.IntegerField(default=0)
+    usuarios_ativos = models.IntegerField(default=0)
+    ftds_qtd = models.IntegerField(default=0, verbose_name="Qtd Primeiros Depósitos")
+    
+    class Meta:
+        verbose_name = "Métrica Diária"
+        verbose_name_plural = "Métricas Diárias"
+
 class Transacao(models.Model):
     TIPO_CHOICES = [
         ('APOSTA', 'Débito - Aposta'),
@@ -89,6 +146,13 @@ class Transacao(models.Model):
         ('BONUS', 'Crédito - Bônus'),
     ]
     
+    origem_solicitacao = models.OneToOneField(
+        SolicitacaoPagamento, 
+        null=True, 
+        blank=True, 
+        on_delete=models.PROTECT,
+        related_name='transacao_efetivada'
+    )
     usuario = models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='extrato')
     tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
     valor = models.DecimalField(max_digits=12, decimal_places=2) # Valor da movimentação
