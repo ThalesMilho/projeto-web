@@ -1,0 +1,96 @@
+:root {
+    --background: #FFF;
+    --foreground: #1c263b;
+    --success: #08E56B;
+    --warning: #FFE625;
+    --primary: #3C7FFF;
+    --secondary: #939fad;
+}
+
+body {
+    background-color: var(--background);
+}
+
+body, html {
+    overflow-x: hidden;
+}
+
+.bg-degrade {
+    background: linear-gradient(-80deg, #1B55C5, #3C7FFF);
+}
+
+.bg-degrade-success {
+    background: linear-gradient(-80deg, #2FB270, #1BDB7B);
+}
+
+.text-shadow-1 {
+    text-shadow: 0px 3px 2.5px rgba(0, 0, 0, 0.25);
+}
+
+.box-shadow-success-1 {
+    box-shadow: 0px 0px 10px var(--success);
+}
+
+.box-shadow-warning-1 {
+    box-shadow: 0px 0px 10px var(--warning);
+}
+
+.-box-shadow-menu-y {
+    box-shadow: 0px -5px 10px rgba(0, 0, 0, 0.51);
+}
+
+.box-shadow-forte-y {
+    box-shadow: 0px 5px 10px rgba(0, 0, 0, 0.31);
+}
+
+.bg-success-linear {
+  background: linear-gradient(90deg, #2A9677, #3CE094);
+}
+
+.bg-quadrado {
+    background: url('/images/quadradoBackground.png');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position-x: right;
+    background-position-y:top; 
+    background-size: 50%;
+}
+
+.spinner_ajPY{transform-origin:center;animation:spinner_AtaB .75s infinite linear}
+@keyframes spinner_AtaB{100%{transform:rotate(360deg)}}
+
+input[type="radio"]:checked + div.radioButton {
+    border-color: var(--primary);
+    background-color: var(--primary);
+    color: #FFF;
+    font-weight: 900;
+    box-shadow: 0px 0px 10px var(--primary);
+}
+
+@keyframes fadeIn {
+    0% { opacity: 0; transform: translate(-15px, 15px); }
+    100% { opacity: 1; transform: translate(0px, 0px); }
+}
+
+.fade-in { animation: fadeIn 0.3s; }
+
+@keyframes shine {
+    0% { transform: translateX(-100%) skewX(12deg); }
+    100% { transform: translateX(200%) skewX(12deg); }
+}
+
+.hide-scrollbar {
+    /* For Internet Explorer and Edge */
+    -ms-overflow-style: none;
+    /* For Firefox */
+    scrollbar-width: none;
+}
+
+/* For Chrome, Safari, Opera, and other WebKit browsers */
+.hide-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
