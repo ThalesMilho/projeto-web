@@ -46,6 +46,53 @@ class CustomUser(AbstractUser):
     meta_rollover = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     total_apostado_rollover = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
 
+
+    # --- NOVOS CAMPOS: Segurança e Compliance ---
+    ip_registro = models.GenericIPAddressField(null=True, blank=True)
+    ultimo_ip = models.GenericIPAddressField(null=True, blank=True)
+    
+    # FTD Real: Armazena a data exata do 1º depósito aprovado para KPI preciso
+    data_primeiro_deposito = models.DateTimeField(null=True, blank=True, db_index=True)
+    
+    # Risco: Marcação para usuários perigosos (fraudadores/bônus abusers)
+    conta_suspeita = models.BooleanField(default=False)
+    motivo_suspeita = models.TextField(blank=True, null=True)
+
+    # --- NOVOS CAMPOS PARA CAMBISTAS ---
+    TIPOS_USUARIO = (
+        ('JOGADOR', 'Jogador Comum'),
+        ('CAMBISTA', 'Cambista'),
+        ('ADMIN', 'Administrador'),
+    )
+    tipo_usuario = models.CharField(max_length=10, choices=TIPOS_USUARIO, default='JOGADOR')
+    
+    # Porcentagem de comissão (Ex: 15.00 para 15%)
+    comissao_percentual = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
+    
+    MODO_COMISSAO_CHOICES = [
+        ('APOSTA', 'Ganha % por Aposta Feita'),
+        ('DEPOSITO', 'Ganha % por Depósito Realizado'),
+    ]
+    modo_comissao = models.CharField(
+        max_length=10, 
+        choices=MODO_COMISSAO_CHOICES, 
+        default='APOSTA',
+        verbose_name="Modo de Comissão"
+    )
+
+    indicado_por = models.ForeignKey(
+        'self', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='indicados',
+        verbose_name="Indicado por (Promotor/Amigo)"
+    )
+
+    # Opcional: Se o cambista tiver um gerente acima dele
+    gerente = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subordinados')
+
+
     # Configurações do Django
     username = models.CharField(max_length=150, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
@@ -62,7 +109,6 @@ class CustomUser(AbstractUser):
         if self.meta_rollover <= Decimal('0.00'): return True
         return self.total_apostado_rollover >= self.meta_rollover
 
-    # --- A FUNÇÃO QUE FALTAVA ---
     def quanto_falta_rollover(self):
         """Retorna quanto falta apostar para liberar o saque"""
         falta = self.meta_rollover - self.total_apostado_rollover
@@ -78,7 +124,57 @@ class CustomUser(AbstractUser):
             acrescimo_rollover = base_calculo * 2
             self.meta_rollover += acrescimo_rollover
         return bonus
-    
+    def processar_comissao(self, valor_base, evento_origem):
+        """
+        Calcula e paga a comissão ao padrinho (se houver).
+        valor_base: Valor da aposta ou do depósito (Decimal)
+        evento_origem: 'APOSTA' ou 'DEPOSITO' (String)
+        """
+        # 1. Tem indicação? O promotor existe?
+        promotor = self.indicado_por
+        if not promotor:
+            return False # Ninguém para receber
+
+        # 2. O promotor está configurado para ganhar nesse tipo de evento?
+        # Ex: Se o promotor ganha por 'DEPOSITO' mas o evento é 'APOSTA', ele não ganha nada.
+        if promotor.modo_comissao != evento_origem:
+            return False
+
+        # 3. O percentual é válido?
+        if promotor.comissao_percentual <= 0:
+            return False
+
+        # 4. Cálculos Financeiros (Com segurança Decimal)
+        valor_base = Decimal(str(valor_base))
+        porcentagem = promotor.comissao_percentual / Decimal('100.00')
+        valor_comissao = valor_base * porcentagem
+        
+        # Arredonda para 2 casas (centavos) para baixo
+        from decimal import ROUND_DOWN
+        valor_comissao = valor_comissao.quantize(Decimal('0.01'), rounding=ROUND_DOWN)
+
+        if valor_comissao <= 0:
+            return False
+
+        # 5. Paga o Promotor
+        saldo_antes = promotor.saldo
+        promotor.saldo += valor_comissao
+        promotor.save()
+
+        # 6. Gera o Extrato (Auditabilidade)
+        # Usamos 'promotor.extrato' porque definimos related_name='extrato' na model Transacao
+        promotor.extrato.create(
+            usuario=promotor,
+            tipo='COMISSAO',
+            valor=valor_comissao,
+            saldo_anterior=saldo_antes,
+            saldo_posterior=promotor.saldo,
+            descricao=f"Comissão sobre {evento_origem} de {self.nome_completo or self.cpf_cnpj}"
+        )
+
+        return True
+
+
 class SolicitacaoPagamento(models.Model):
     TIPO_CHOICES = [
         ('DEPOSITO', 'Depósito'),
@@ -103,6 +199,13 @@ class SolicitacaoPagamento(models.Model):
     qr_code = models.TextField(null=True, blank=True) 
     qr_code_url = models.URLField(null=True, blank=True)
     
+
+    # --- COMPLIANCE E AUDITORIA ---
+    risco_score = models.IntegerField(default=0, help_text="0-100. Acima de 80 bloqueia auto.")
+    analise_motivo = models.TextField(blank=True, null=True, help_text="Motivo da análise de risco")
+    data_aprovacao = models.DateTimeField(null=True, blank=True)
+
+
     # Auditoria e Controle
     criado_em = models.DateTimeField(auto_now_add=True)
     atualizado_em = models.DateTimeField(auto_now=True)
@@ -112,29 +215,46 @@ class SolicitacaoPagamento(models.Model):
         return f"{self.tipo} - {self.usuario} - {self.get_status_display()} - R$ {self.valor}"
 
 # --- NOVO MODELO: ETL / DASHBOARD OTIMIZADO ---
+# Em Backend/accounts/models.py
+
 class MetricasDiarias(models.Model):
     """
-    Tabela de resumo atualizada 1x por dia (Job) para não travar o banco.
+    Tabela consolidada. Cada linha aqui é um dia fechado.
+    Permite gráficos instantâneos sem varrer milhões de transações.
     """
     data = models.DateField(unique=True, db_index=True)
     
-    # Financeiro (Caixa)
-    total_deposito = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
-    total_saque = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
-    receita_liquida = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00')) # House Edge Real
+    # 1. Financeiro (Caixa) - Detalhado por Valor e Quantidade
+    total_deposito_valor = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+    total_deposito_qtd = models.IntegerField(default=0)
     
-    # Operacional (Apostas)
+    total_saque_valor = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+    total_saque_qtd = models.IntegerField(default=0)
+    
+    total_bonus_concedido = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+
+    # 2. Operacional (Apostas)
     total_apostado = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
     total_premios = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+    house_edge_valor = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'), verbose_name="Lucro Bruto (GGR)")
     
-    # KPIs de Crescimento
+    # 3. KPIs de Crescimento
     novos_usuarios = models.IntegerField(default=0)
     usuarios_ativos = models.IntegerField(default=0)
+    
+    # FTDs Reais (First Time Deposits)
     ftds_qtd = models.IntegerField(default=0, verbose_name="Qtd Primeiros Depósitos")
+    ftds_valor = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+    
+    # 4. JSON para Flexibilidade (Ex: Top Modalidades)
+    performance_modalidades = models.JSONField(default=dict, blank=True)
+    # JSON para guardar: {"00h": 500, "01h": 200... "23h": 1500}
+    mapa_calor_horas = models.JSONField(default=dict, blank=True)
     
     class Meta:
         verbose_name = "Métrica Diária"
         verbose_name_plural = "Métricas Diárias"
+        get_latest_by = 'data'
 
 class Transacao(models.Model):
     TIPO_CHOICES = [
@@ -144,6 +264,7 @@ class Transacao(models.Model):
         ('SAQUE', 'Débito - Saque'),
         ('ESTORNO', 'Crédito - Estorno'),
         ('BONUS', 'Crédito - Bônus'),
+        ('COMISSAO', 'Crédito - Comissão'),
     ]
     
     origem_solicitacao = models.OneToOneField(

@@ -3,12 +3,15 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.utils import timezone
-from django.db import transaction, DatabaseError
+from django.db import transaction, DatabaseError, IntegrityError
 from django.db.models import F
+from decimal import Decimal, ROUND_DOWN
+import logging
 from django.shortcuts import get_object_or_404, render
 
-# --- AQUI ESTAVA FALTANDO: Importação dos seus Models ---
 from .models import Sorteio, Aposta, ParametrosDoJogo
+
+from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 # Imports de outros apps e utilitários
 from accounts.models import Transacao
@@ -20,12 +23,14 @@ from collections import Counter
 # Imports dos Serializers
 from .serializer import SorteioSerializer, CriarApostaSerializer, ApostaDetalheSerializer
 
+logger = logging.getLogger(__name__)
+
 
 # --- VIEWS DE LEITURA (GET - Públicas) ---
 
 class BichosView(APIView):
     permission_classes = [permissions.AllowAny]
-
+    @extend_schema(summary="Lista de Bichos", responses={200: OpenApiTypes.OBJECT}) 
     def get(self, request):
         bichos = [
             {"numero": 1, "nome": "Avestruz", "dezenas": "01, 02, 03, 04"},
@@ -62,59 +67,65 @@ class CotacaoView(APIView):
     Retorna as modalidades de jogo baseadas no padrão de mercado (Prints enviados).
     """
     permission_classes = [permissions.AllowAny]
-
+    @extend_schema(summary="Cotações Atuais", responses={200: OpenApiTypes.OBJECT}) 
     def get(self, request):
-        # Carrega configurações dinâmicas para os jogos base
         config = ParametrosDoJogo.load()
-        
-        cotacoes = [
-            # --- 1. MODALIDADES BÁSICAS (Controladas pelo Admin) ---
-            {"modalidade": "M", "nome": "MILHAR", "fator": float(config.cotacao_milhar)}, 
-            {"modalidade": "C", "nome": "CENTENA", "fator": float(config.cotacao_centena)}, 
-            {"modalidade": "D", "nome": "DEZENA", "fator": float(config.cotacao_dezena)},  
+
+        # Função auxiliar: Pega o valor do banco, se não existir, usa o padrão (evita o crash)
+        def val(campo, padrao):
+            valor = getattr(config, campo, padrao)
+            return float(valor) if valor is not None else padrao
+
+        # Sua lista original, agora protegida
+        lista_jb = [
+            {"modalidade": "M", "nome": "MILHAR", "fator": val('cotacao_milhar', 4000.0)}, 
+            {"modalidade": "C", "nome": "CENTENA", "fator": val('cotacao_centena', 600.0)}, 
+            {"modalidade": "D", "nome": "DEZENA", "fator": val('cotacao_dezena', 60.0)},  
             {"modalidade": "U", "nome": "UNIDADE", "fator": 8.0},         
-            {"modalidade": "G", "nome": "GRUPO", "fator": float(config.cotacao_grupo)},    
+            {"modalidade": "G", "nome": "GRUPO", "fator": val('cotacao_grupo', 18.0)},    
 
-            # --- 2. VARIAÇÕES DE MILHAR E CENTENA ---
-            {"modalidade": "MC", "nome": "MILHAR E CENTENA (MC)", "fator": float(config.cotacao_milhar_centena)},
-            {"modalidade": "MINV", "nome": "MILHAR INVERTIDA", "fator": 8000.0},
-            {"modalidade": "CINV", "nome": "CENTENA INVERTIDA", "fator": 800.0},
+            # Variações (Usando valores padrão pois não estão no Model ainda)
+            {"modalidade": "MC", "nome": "MILHAR E CENTENA (MC)", "fator": 2000.0}, 
+            {"modalidade": "MINV", "nome": "MILHAR INVERTIDA", "fator": val('cotacao_milhar_invertida', 400.0)},
+            {"modalidade": "CINV", "nome": "CENTENA INVERTIDA", "fator": val('cotacao_centena_invertida', 100.0)},
             
-            # Variações de Posição
-            {"modalidade": "C_ESQ", "nome": "CENTENA ESQUERDA", "fator": 800.0},
-            {"modalidade": "C_INV_ESQ", "nome": "CENTENA INV ESQ", "fator": 800.0},
-            {"modalidade": "C_3X", "nome": "CENTENA 3X", "fator": 200.0}, # Estimado, pois não aparece valor no print
+            # Hardcoded (Mantidos)
+            {"modalidade": "C_ESQ", "nome": "CENTENA ESQUERDA", "fator": 600.0},
+            {"modalidade": "C_INV_ESQ", "nome": "CENTENA INV ESQ", "fator": 100.0},
+            {"modalidade": "C_3X", "nome": "CENTENA 3X", "fator": 200.0}, 
 
-            # --- 3. COMBINAÇÕES DE DEZENA ---
-            {"modalidade": "DD", "nome": "DUQUE DE DEZENA", "fator": 300.0},
+            {"modalidade": "DD", "nome": "DUQUE DE DEZENA", "fator": val('cotacao_duque_dezena', 300.0)},
             {"modalidade": "TDS", "nome": "TERNO DEZ SECO", "fator": 10000.0},
-            {"modalidade": "TD", "nome": "TERNO DE DEZENA", "fator": 5000.0},
+            {"modalidade": "TD", "nome": "TERNO DE DEZENA", "fator": val('cotacao_terno_dezena', 5000.0)},
 
-            # --- 4. COMBINAÇÕES DE GRUPO (GP) ---
             {"modalidade": "DG", "nome": "DUQUE DE GRUPO", "fator": 200.0},    
             {"modalidade": "TG", "nome": "TERNO DE GRUPO", "fator": 1500.0},  
             {"modalidade": "QG", "nome": "QUADRA DE GRUPO", "fator": 1000.0},  
 
-            # --- 5. QUINA DE GRUPO  ---
             {"modalidade": "QNG", "nome": "QUINA GP 8/5", "fator": 1000.0},
             {"modalidade": "QNG_ESQ", "nome": "QUINA GP 8/5 ESQ", "fator": 1000.0},
             {"modalidade": "QNG_MEIO", "nome": "QUINA GP 8/5 MEIO", "fator": 1000.0},
 
-            # --- 6. SENA DE GRUPO ---
             {"modalidade": "SENA", "nome": "SENA GP 10/6", "fator": 1000.0},
             {"modalidade": "SENA_ESQ", "nome": "SENA GP 10/6 ESQ", "fator": 1000.0},
             {"modalidade": "SENA_MEIO", "nome": "SENA GP 10/6 MEIO", "fator": 1000.0},
 
-            # --- 7. PASSES E ESPECIAIS ---
-            {"modalidade": "PV", "nome": "PASSE VAI", "fator": 90.0},         
-            {"modalidade": "PVV", "nome": "PASSE VAI VEM", "fator": 45.0},  
+            {"modalidade": "PV", "nome": "PASSE VAI", "fator": val('cotacao_passe_vai', 90.0)},         
+            {"modalidade": "PVV", "nome": "PASSE VAI VEM", "fator": val('cotacao_passe_vai_vem', 45.0)},  
             {"modalidade": "PALP", "nome": "PALPITÃO", "fator": 800.0},       
         ]
-        return Response(cotacoes, status=status.HTTP_200_OK)
+
+        # Retorna TUDO que o front precisa num objeto só
+        return Response({
+            "lista_jb": lista_jb,
+            "quininha": config.cotacao_quininha,
+            "seninha": config.cotacao_seninha,
+            "lotinha": config.cotacao_lotinha
+        })
 
 class SorteiosAbertosView(APIView):
     permission_classes = [permissions.AllowAny]
-
+    @extend_schema(summary="Sorteios Abertos", responses={200: OpenApiTypes.OBJECT}) 
     def get(self, request):
         hoje = timezone.localdate()
         sorteios = Sorteio.objects.filter(
@@ -188,7 +199,12 @@ class ApuracaoAPIView(APIView):
     Endpoint para disparar a apuração via API (alternativa ao botão do Admin).
     """
     permission_classes = [permissions.IsAdminUser]
-
+    @extend_schema(
+        summary="Rodar Apuração Manual",
+        description="Força o sistema a verificar vencedores para um sorteio específico.",
+        request={'application/json': {'properties': {'sorteio_id': {'type': 'integer'}}}},
+        responses={200: OpenApiTypes.OBJECT}
+    )
     def post(self, request, pk):
         sorteio = get_object_or_404(Sorteio, pk=pk)
         
@@ -222,7 +238,9 @@ class ApostaViewSet(mixins.CreateModelMixin,
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Usuário só vê as próprias apostas
+        if getattr(self, 'swagger_fake_view', False):
+            return Aposta.objects.none()
+            
         return Aposta.objects.filter(usuario=self.request.user).order_by('-criado_em')
 
     def get_serializer_class(self):
@@ -242,9 +260,9 @@ class ApostaViewSet(mixins.CreateModelMixin,
         # ----------------------------------------
 
         # Validação inicial dos dados
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
-        
+
         dados = serializer.validated_data
         user = request.user
         valor_aposta = dados['valor']
@@ -262,7 +280,8 @@ class ApostaViewSet(mixins.CreateModelMixin,
 
         try:
             with transaction.atomic():
-                # 2. Trava a conta do usuário (Select For Update)
+                # Lock order: Sempre Sorteio -> Usuario (evita deadlocks)
+                sorteio_travado = Sorteio.objects.select_for_update().get(pk=sorteio_alvo.pk)
                 user_travado = type(user).objects.select_for_update().get(pk=user.pk)
 
                 # 3. Verifica Saldo
@@ -270,29 +289,86 @@ class ApostaViewSet(mixins.CreateModelMixin,
                     return Response({"erro": "Saldo insuficiente."}, status=status.HTTP_400_BAD_REQUEST)
 
                 # 4. Verifica se o sorteio ainda está aberto
-                if sorteio_alvo.fechado:
+                if sorteio_travado.fechado:
                     return Response({"erro": "Sorteio fechado."}, status=status.HTTP_400_BAD_REQUEST)
 
                 # 5. Debita o valor
+                saldo_anterior = user_travado.saldo
                 user_travado.saldo = F('saldo') - valor_aposta
                 user_travado.save()
                 user_travado.refresh_from_db()
 
-                # 6. Salva a aposta
-                aposta = serializer.save(usuario=user_travado)
+                # --- 6. LÓGICA DE CAMBISTA (Auto-comissão) ---
+                comissao_valor = Decimal('0.00')
+                if user_travado.tipo_usuario == 'CAMBISTA' and user_travado.comissao_percentual > 0:
+                    raw_comissao = (valor_aposta * (user_travado.comissao_percentual / Decimal('100')))
+                    CENTS = Decimal('0.01')
+                    comissao_valor = raw_comissao.quantize(CENTS, rounding=ROUND_DOWN)
 
-                # 7. Cria o extrato (Transação)
+                    # Credita comissão no saldo do próprio cambista
+                    prev_saldo = user_travado.saldo
+                    user_travado.saldo = F('saldo') + comissao_valor
+                    user_travado.save()
+                    user_travado.refresh_from_db()
+
+                    # Gera o LOG da comissão do cambista (Trazido para o lugar certo!)
+                    Transacao.objects.create(
+                        usuario=user_travado,
+                        tipo='COMISSAO',
+                        valor=comissao_valor,
+                        saldo_anterior=prev_saldo,
+                        saldo_posterior=user_travado.saldo,
+                        descricao=f"Comissão sobre aposta - {dados['palpite']} ({dados['tipo_jogo']})"
+                    )
+
+                # --- 7. SALVA A APOSTA ORIGINAL ---
+                aposta = serializer.save(usuario=user_travado, comissao_gerada=comissao_valor)
+
+                if aposta.comissao_gerada != comissao_valor:
+                    raise ValueError("Serializer ignored 'comissao_gerada' during save.")
+
+                # --- 8. GATILHO DE AFILIADOS (Promotores/Padrinhos) ---
+                # Fica FORA do if do cambista, para valer para todo mundo
+                user_travado.processar_comissao(valor_aposta, 'APOSTA')
+
+                # --- 9. PROMOÇÃO MILHAR BRINDE ---
+                # Carrega config aqui fora para garantir que existe
+                config = ParametrosDoJogo.load()
+                
+                if config.milhar_brinde_ativa and valor_aposta >= config.valor_minimo_para_brinde:
+                    import random
+                    # Gera um número aleatório de 0000 a 9999
+                    palpite_brinde = f"{random.randint(0, 9999):04d}"
+                    
+                    # Cria a aposta extra (Gratuita)
+                    Aposta.objects.create(
+                        usuario=user_travado,
+                        sorteio=sorteio_travado, 
+                        tipo_jogo='MB',          
+                        valor=Decimal('0.00'),   
+                        palpite=palpite_brinde,
+                        comissao_gerada=Decimal('0.00')
+                    )
+
+                # --- 10. CRIA EXTRATO DA APOSTA ---
                 Transacao.objects.create(
                     usuario=user_travado,
                     tipo='APOSTA',
                     valor=valor_aposta,
-                    saldo_anterior=user_travado.saldo + valor_aposta,
-                    saldo_posterior=user_travado.saldo,
+                    saldo_anterior=saldo_anterior,
+                    saldo_posterior=user_travado.saldo, # Saldo final já descontado a aposta (e somado a comissão se for cambista)
                     descricao=f"Jogo: {aposta.get_tipo_jogo_display()} - {aposta.palpite}"
                 )
 
                 read_serializer = ApostaDetalheSerializer(aposta)
                 return Response(read_serializer.data, status=status.HTTP_201_CREATED)
 
+        except IntegrityError as e:
+            logger.warning("Integrity error creating aposta: %s", e)
+            return Response({"erro": "Conflito ao criar aposta."}, status=status.HTTP_409_CONFLICT)
+        except ValueError as e:
+            logger.error("Validation/integrity error while creating aposta: %s", e, exc_info=True)
+            return Response({"erro": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            return Response({"erro": f"Erro interno: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.critical("Unexpected error creating aposta", exc_info=True)
+            return Response({"erro": "Erro interno do servidor."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

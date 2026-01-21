@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import CustomUser
+from .models import SolicitacaoPagamento, Transacao, CustomUser
 from validate_docbr import CPF, CNPJ
 import re
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -82,3 +82,40 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['saldo'] = str(self.user.saldo)
         
         return data
+    
+# 1. Serializer para Redefinição de Senha
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True)
+
+# 2. Serializer Completo para Backoffice (Solicitações)
+class SolicitacaoPagamentoAdminSerializer(serializers.ModelSerializer):
+    usuario_nome = serializers.CharField(source='usuario.nome_completo', read_only=True)
+    usuario_email = serializers.CharField(source='usuario.email', read_only=True)
+    usuario_cpf = serializers.CharField(source='usuario.cpf_cnpj', read_only=True)
+    
+    class Meta:
+        model = SolicitacaoPagamento
+        fields = [
+            'id', 'usuario_id', 'usuario_nome', 'usuario_email', 'usuario_cpf',
+            'tipo', 'valor', 'status', 'criado_em', 'data_aprovacao', 
+            'analise_motivo', 'risco_score', #'comprovante_url'
+        ]
+
+# 3. Serializer para Ação de Aprovar/Recusar
+class AnaliseSolicitacaoSerializer(serializers.Serializer):
+    acao = serializers.ChoiceField(choices=['APROVAR', 'RECUSAR'])
+    motivo = serializers.CharField(required=False, allow_blank=True)
+
+# 4. Serializer de Risco (IPs)
+class RiscoIPSerializer(serializers.Serializer):
+    ultimo_ip = serializers.IPAddressField()
+    total_contas = serializers.IntegerField()
+    usuarios = serializers.ListField(child=serializers.CharField())
+
+
+class DepositoSerializer(serializers.Serializer):
+    valor = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=1.00)

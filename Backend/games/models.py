@@ -1,12 +1,13 @@
+from decimal import Decimal, ROUND_DOWN 
 from django.db import models
 from django.conf import settings 
 from django.core.cache import cache 
+
 from .utils import (
     pegar_bicho, gerar_invertidas, extrair_resultado_completo, extrair_dezenas_sorteio,
     DEFAULT_COTACAO_QUININHA, DEFAULT_COTACAO_SENINHA, DEFAULT_COTACAO_LOTINHA
 )
 
-# --- ADICIONE ISTO AQUI (Funções para corrigir o Warning) ---
 def get_default_quininha():
     return DEFAULT_COTACAO_QUININHA
 
@@ -19,51 +20,109 @@ def get_default_lotinha():
     return DEFAULT_COTACAO_LOTINHA
 # -----------------------------------------------------------
 
-# 0. Configurações Globais (Singleton)
-class ParametrosDoJogo(models.Model):
-    # --- Cotações (Multiplicadores) ---
-    # Baseado nos seus TIPOS_JOGO (G, D, C, M)
+# Em Backend/games/models.py
+
+# ... imports ...
+
+class SingletonModel(models.Model):
+    """
+    Classe abstrata para garantir que só exista 1 registro desta tabela (Configurações).
+    """
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super(SingletonModel, self).save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        pass
+
+    @classmethod
+    def load(cls):
+        obj, created = cls.objects.get_or_create(pk=1)
+        return obj
+
+class ParametrosDoJogo(SingletonModel):
+    # --- Cotações do Jogo do Bicho ---
     cotacao_grupo = models.DecimalField("Grupo (18x)", max_digits=6, decimal_places=2, default=18.0)
     cotacao_dezena = models.DecimalField("Dezena (60x)", max_digits=6, decimal_places=2, default=60.0)
     cotacao_centena = models.DecimalField("Centena (600x)", max_digits=6, decimal_places=2, default=600.0)
     cotacao_milhar = models.DecimalField("Milhar (4000x)", max_digits=6, decimal_places=2, default=4000.0)
     
-    # Cotações Combinadas
-    cotacao_milhar_centena = models.DecimalField("Milhar/Centena (4400x)", max_digits=7, decimal_places=2, default=4400.0)
-    cotacao_milhar_invertida = models.DecimalField("Milhar Invertida", max_digits=7, decimal_places=2, default=8000.0)
-    cotacao_centena_invertida = models.DecimalField("Centena Invertida", max_digits=6, decimal_places=2, default=800.0)
-    
-    cotacao_duque_grupo = models.DecimalField("Duque de Grupo", max_digits=6, decimal_places=2, default=200.0)
-    cotacao_terno_grupo = models.DecimalField("Terno de Grupo", max_digits=6, decimal_places=2, default=1500.0)
+    # Invertidas e Combinadas
+    cotacao_milhar_invertida = models.DecimalField("Milhar Invertida", max_digits=6, decimal_places=2, default=400.0)
+    cotacao_centena_invertida = models.DecimalField("Centena Invertida", max_digits=6, decimal_places=2, default=100.0)
+    cotacao_duque_dezena = models.DecimalField("Duque de Dezena", max_digits=6, decimal_places=2, default=300.0)
+    cotacao_terno_dezena = models.DecimalField("Terno de Dezena", max_digits=6, decimal_places=2, default=3000.0)
+    cotacao_passe_vai_vem = models.DecimalField("Passe Vai-Vem", max_digits=6, decimal_places=2, default=40.0)
+    cotacao_milhar_centena = models.DecimalField("Milhar/Centena", max_digits=6, decimal_places=2, default=2000.0)
+
+    cotacao_duque_grupo = models.DecimalField("Duque de Grupo", max_digits=6, decimal_places=2, default=18.0)
+    cotacao_terno_grupo = models.DecimalField("Terno de Grupo", max_digits=6, decimal_places=2, default=150.0)
     cotacao_quadra_grupo = models.DecimalField("Quadra de Grupo", max_digits=6, decimal_places=2, default=1000.0)
-    cotacao_quina_grupo = models.DecimalField("Quina de Grupo", max_digits=6, decimal_places=2, default=1000.0)
-    
-    cotacao_passe_vai = models.DecimalField("Passe Vai", max_digits=6, decimal_places=2, default=90.0)
-    cotacao_passe_vai_vem = models.DecimalField("Passe Vai e Vem", max_digits=6, decimal_places=2, default=45.0)
+    cotacao_quina_grupo = models.DecimalField("Quina de Grupo", max_digits=6, decimal_places=2, default=5000.0)
+    cotacao_passe_vai = models.DecimalField("Passe Vai", max_digits=6, decimal_places=2, default=80.0)
 
-    # 1. Acertos necessários (Editável no Admin)
-    quininha_acertos_necessarios = models.IntegerField("Quininha - Acertos p/ Ganhar", default=5, help_text="Padrão: 5")
-    seninha_acertos_necessarios = models.IntegerField("Seninha - Acertos p/ Ganhar", default=6, help_text="Padrão: 6")
-    lotinha_acertos_necessarios = models.IntegerField("Lotinha - Acertos p/ Ganhar", default=5, help_text="Padrão: 5")
-
-    # 2. Tabelas JSON (Quanto paga)
-    tabela_quininha = models.JSONField("Tabela Pagamento Quininha", default=get_default_quininha)
-    tabela_seninha = models.JSONField("Tabela Pagamento Seninha", default=get_default_seninha)
-    tabela_lotinha = models.JSONField("Tabela Pagamento Lotinha", default=get_default_lotinha)
-
-    # --- Segurança Financeira ---
-    premio_maximo_aposta = models.DecimalField(
-        "Teto Máximo (R$)", 
-        max_digits=10, 
-        decimal_places=2, 
-        default=20000.00,
-        help_text="Valor máximo que o sistema paga em uma única aposta."
+    cotacao_quininha = models.JSONField(
+        default=get_default_quininha, 
+        verbose_name="Tabela Quininha (Ex: {'1': 10, '5': 1000})"
     )
+    cotacao_seninha = models.JSONField(
+        default=get_default_seninha,
+        verbose_name="Tabela Seninha"
+    )
+    cotacao_lotinha = models.JSONField(
+        default=get_default_lotinha,
+        verbose_name="Tabela Lotinha"
+    )
+
+    quininha_acertos_necessarios = models.IntegerField("Quininha (Acertos Min)", default=1)
+    seninha_acertos_necessarios = models.IntegerField("Seninha (Acertos Min)", default=1)
+    lotinha_acertos_necessarios = models.IntegerField("Lotinha (Acertos Min)", default=1)
+
+    modalidades_ativas = models.JSONField(
+        default=dict, 
+        blank=True,
+        verbose_name="Modalidades Ativas (JSON)",
+        help_text="Ex: {'M': true, 'G': false}"
+    )
+
+    milhar_brinde_ativa = models.BooleanField("Promoção Milhar Brinde Ativa?", default=False)
+    valor_minimo_para_brinde = models.DecimalField(
+        "Mínimo para ganhar Brinde (R$)", 
+        max_digits=10, decimal_places=2, default=Decimal('20.00')
+    )
+    cotacao_milhar_brinde = models.DecimalField(
+        "Cotação da Milhar Brinde", 
+        max_digits=10, decimal_places=2, default=Decimal('1000.00')
+    )
+
+    # --- Kill Switch & Regras Gerais ---
     ativa_apostas = models.BooleanField("Sistema Ativo?", default=True)
+    
+    limite_saque_automatico = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('500.00'),
+        verbose_name="Teto para Saque Automático (R$)"
+    )
+    tempo_minimo_deposito_saque_minutos = models.IntegerField(
+        default=120, # 2 horas
+        verbose_name="Tempo Mínimo entre Depósito e Saque (min)"
+    )
+
+    premio_maximo_aposta = models.DecimalField(
+        "Prêmio Máximo por Aposta (R$)", 
+        max_digits=12, 
+        decimal_places=2, 
+        default=Decimal('20000.00')
+    )
+
+    def __str__(self):
+        return "Configurações do Sistema"
 
     class Meta:
-        verbose_name = "Parâmetros do Jogo (Cotações)"
-        verbose_name_plural = "Parâmetros do Jogo (Cotações)"
+        verbose_name = "Parâmetros do Sistema"
+        verbose_name_plural = "Parâmetros do Sistema"
 
     def save(self, *args, **kwargs):
         self.pk = 1
@@ -80,6 +139,8 @@ class ParametrosDoJogo(models.Model):
             obj, created = cls.objects.get_or_create(pk=1)
             cache.set('parametros_jogo', obj)
         return obj
+    
+
 
 # 1. Tabela Auxiliar para os Bichos (Ex: 1=Avestruz, 25=Vaca)
 class Bicho(models.Model):
@@ -189,7 +250,10 @@ class Aposta(models.Model):
     
     criado_em = models.DateTimeField(auto_now_add=True)
     ganhou = models.BooleanField(default=False)
-    valor_premio = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    valor_premio = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    
+    # Comissão gerada para cambistas
+    comissao_gerada = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
 
     def __str__(self):
         return f"{self.usuario} - {self.get_tipo_jogo_display()} - {self.palpite}"
@@ -197,42 +261,53 @@ class Aposta(models.Model):
 
     def calcular_premio_estimado(self):
         config = ParametrosDoJogo.load() 
-        multiplicador = 0.0
+        
+        # Garante que o valor é Decimal
+        valor_aposta = Decimal(str(self.valor))
+        multiplicador = Decimal('0.00')
 
-        # 1. CÁLCULO PARA LOTERIAS
+        # 1. CÁLCULO PARA LOTERIAS (Baseado em JSON)
         if self.tipo_jogo in ['QU', 'SE', 'LO']:
-            qtde_jogada = str(len(self.palpite.replace('-', ',').split(',')))
+            # Limpeza robusta da string (Remove espaços e vazios)
+            numeros = [n.strip() for n in self.palpite.replace('-', ',').split(',') if n.strip()]
+            qtde_jogada = str(len(numeros))
+            
             tabela = {}
-            if self.tipo_jogo == 'QU': tabela = config.tabela_quininha
-            elif self.tipo_jogo == 'SE': tabela = config.tabela_seninha
-            elif self.tipo_jogo == 'LO': tabela = config.tabela_lotinha
+            if self.tipo_jogo == 'QU': tabela = config.cotacao_quininha
+            elif self.tipo_jogo == 'SE': tabela = config.cotacao_seninha
+            elif self.tipo_jogo == 'LO': tabela = config.cotacao_lotinha
 
-            multiplicador = float(tabela.get(qtde_jogada, 0))
+            # Pega o valor da tabela (padrão 0 se não achar) e converte pra Decimal
+            fator = tabela.get(qtde_jogada, 0)
+            multiplicador = Decimal(str(fator))
 
         # 2. CÁLCULO PARA JOGOS TRADICIONAIS
-        elif self.tipo_jogo == 'G': multiplicador = config.cotacao_grupo
-        elif self.tipo_jogo == 'D': multiplicador = config.cotacao_dezena
-        elif self.tipo_jogo == 'C': multiplicador = config.cotacao_centena
-        elif self.tipo_jogo == 'M': multiplicador = config.cotacao_milhar
-        elif self.tipo_jogo == 'MC': multiplicador = config.cotacao_milhar_centena
+        # Mapeamento direto para evitar IFs gigantes
+        mapa_cotacoes = {
+            'G': config.cotacao_grupo,
+            'D': config.cotacao_dezena,
+            'C': config.cotacao_centena,
+            'M': config.cotacao_milhar,
+            'MC': config.cotacao_milhar_centena if hasattr(config, 'cotacao_milhar_centena') else Decimal('0'),
+            'MI': config.cotacao_milhar_invertida,
+            'CI': config.cotacao_centena_invertida,
+            'DG': config.cotacao_duque_grupo if hasattr(config, 'cotacao_duque_grupo') else Decimal('0'),
+            'PV': config.cotacao_passe_vai,
+            'PVV': config.cotacao_passe_vai_vem,
+        }
 
-        elif self.tipo_jogo == 'MI': multiplicador = config.cotacao_milhar_invertida
-        elif self.tipo_jogo == 'CI': multiplicador = config.cotacao_centena_invertida
+        if self.tipo_jogo in mapa_cotacoes:
+            multiplicador = mapa_cotacoes[self.tipo_jogo]
 
-        elif self.tipo_jogo == 'DG': multiplicador = config.cotacao_duque_grupo
-        elif self.tipo_jogo == 'TG': multiplicador = config.cotacao_terno_grupo
-        elif self.tipo_jogo == 'QG': multiplicador = config.cotacao_quadra_grupo
-        elif self.tipo_jogo == 'QNG': multiplicador = config.cotacao_quina_grupo
+        # Cálculo Final Seguro
+        premio = valor_aposta * multiplicador
 
-        elif self.tipo_jogo == 'PV': multiplicador = config.cotacao_passe_vai
-        elif self.tipo_jogo == 'PVV': multiplicador = config.cotacao_passe_vai_vem
+        # Verifica limite máximo (se tiver esse campo no config, senão ignore)
+        if hasattr(config, 'premio_maximo_aposta') and premio > config.premio_maximo_aposta:
+            premio = config.premio_maximo_aposta
 
-        premio = float(self.valor) * float(multiplicador)
-
-        if premio > float(config.premio_maximo_aposta):
-            premio = float(config.premio_maximo_aposta)
-
-        return premio
+        # Arredonda para 2 casas decimais para baixo (padrão bancário para evitar pagar a mais)
+        return premio.quantize(Decimal('0.01'), rounding=ROUND_DOWN)
 
     @staticmethod
     def descobrir_grupo(numero_str):

@@ -20,7 +20,7 @@ class ParametrosDoJogoAdmin(admin.ModelAdmin):
             'fields': ('cotacao_grupo', 'cotacao_dezena', 'cotacao_centena', 'cotacao_milhar', 'cotacao_milhar_centena'),
             'description': 'Multiplicadores para os jogos clássicos.'
         }),
-        ('Cotações Especiais (Pix Legal)', {
+        ('Cotações Especiais', {
             'fields': (
                 'cotacao_milhar_invertida', 'cotacao_centena_invertida',
                 'cotacao_duque_grupo', 'cotacao_terno_grupo', 'cotacao_quadra_grupo', 'cotacao_quina_grupo',
@@ -37,7 +37,7 @@ class ParametrosDoJogoAdmin(admin.ModelAdmin):
             'description': 'Quantos acertos para ganhar?'
         }),
         ('Tabelas de Pagamento (JSON)', {
-            'fields': ('tabela_quininha', 'tabela_seninha', 'tabela_lotinha'),
+            'fields': ('cotacao_quininha', 'cotacao_seninha', 'cotacao_lotinha'),
             'description': 'Edite o JSON: {"DezenasJogadas": Multiplicador}'
         }),
     )

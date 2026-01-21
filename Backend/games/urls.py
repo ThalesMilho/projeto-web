@@ -1,14 +1,16 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-# Importa apenas as views que estamos usando no momento
 from .views import (
     BichosView, 
     CotacaoView, 
     SorteiosAbertosView, 
-    ApostaViewSet,       # Nova ViewSet (Cria e Lista)
-    ApuracaoAPIView,     # Opcional (Apuração via API)
-    comprovante_view     # Visual para impressão
+    ApostaViewSet,       
+    ApuracaoAPIView,     
+    comprovante_view,
+    QuininhaView,
+    SeninhaView,
+    LotinhaView
 )
 
 # O Router cria as rotas automáticas para o CRUD de apostas
@@ -16,16 +18,20 @@ router = DefaultRouter()
 router.register(r'apostas', ApostaViewSet, basename='apostas')
 
 urlpatterns = [
-    # --- ENDPOINTS DE DADOS (Para preencher o menu do site) ---
+    # --- ENDPOINTS DE DADOS (Públicos) ---
     path('bichos/', BichosView.as_view(), name='lista-bichos'),
-    path('cotacoes/', CotacaoView.as_view(), name='lista-cotacoes'), # <--- Sua lista gigante está aqui
+    path('cotacoes/', CotacaoView.as_view(), name='lista-cotacoes'),
     path('sorteios/abertos/', SorteiosAbertosView.as_view(), name='sorteios-abertos'),
 
+    # --- ENDPOINTS DE REGRAS (Novos) ---
+    path('quininha/', QuininhaView.as_view(), name='quininha'),
+    path('seninha/', SeninhaView.as_view(), name='seninha'),
+    path('lotinha/', LotinhaView.as_view(), name='lotinha'),
+
     # --- ENDPOINTS DE AÇÃO ---
-    # Substitui o antigo 'apostar/' pelo router que faz tudo (cria e lista)
     path('', include(router.urls)),
 
-    # --- APURAÇÃO (Backup caso não queira usar o Admin) ---
+    # --- APURAÇÃO (Admin) ---
     path('apurar/<int:pk>/', ApuracaoAPIView.as_view(), name='apurar-sorteio'),
 
     # --- VISUAL (Impressão) ---

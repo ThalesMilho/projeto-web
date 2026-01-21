@@ -27,8 +27,9 @@ INSTALLED_APPS = [
     'rest_framework',  
     'corsheaders',
     'accounts',
+    'drf_spectacular',  
+    'django_filters',  
     'games',
-    'drf_yasg',       
 ]
 
 
@@ -119,8 +120,6 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 # Default primary key field type
-# https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
@@ -130,13 +129,14 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication', 
     ),
-    # --- NOVO: RATE LIMITING (Proteção contra Brute Force e Flood) ---
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+
+    # --- RATE LIMITING ---
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle', # Para quem não está logado (Login/Register)
-       #'rest_framework.throttling.UserRateThrottle'  # Para usuários logados (Apostas)
+        'rest_framework.throttling.AnonRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '5/minute',   # 5 tentativas de login por minuto (Dificulta quebra de senha)
+        'anon': '5/minute',
         'user': '60/minute'
     }
 }
@@ -178,3 +178,9 @@ LOGGING = {
 }
 
 SKALEPAY_SECRET_KEY = '123456'
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'PixLegal API',
+    'DESCRIPTION': 'API de Gestão de Apostas e Financeiro',
+    'VERSION': '1.0.0',
+    'COMPONENT_SPLIT_REQUEST': True,
+}
