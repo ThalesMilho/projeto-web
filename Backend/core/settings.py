@@ -185,7 +185,8 @@ LOGGING = {
     },
 }
 
-SKALEPAY_SECRET_KEY = '123456'
+SKALEPAY_SECRET_KEY = os.getenv('SKALEPAY_SECRET_KEY', 'erro-chave-nao-configurada')
+SKALEPAY_BASE_URL = "https://api.conta.skalepay.com.br"
 SPECTACULAR_SETTINGS = {
     'TITLE': 'PixLegal API',
     'DESCRIPTION': 'API de Gestão de Apostas e Financeiro',
