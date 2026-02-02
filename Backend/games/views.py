@@ -59,7 +59,6 @@ class BichosView(APIView):
             {"numero": 24, "nome": "Veado", "dezenas": "93, 94, 95, 96"},
             {"numero": 25, "nome": "Vaca", "dezenas": "97, 98, 99, 00"},
         ]
-        bichos = [{"numero": i, "nome": "Bicho Exemplo"} for i in range(1, 26)]
         return Response(bichos, status=status.HTTP_200_OK)
 
 class CotacaoView(APIView):
@@ -300,7 +299,7 @@ class ApostaViewSet(mixins.CreateModelMixin,
 
                 # --- 6. LÓGICA DE CAMBISTA (Auto-comissão) ---
                 comissao_valor = Decimal('0.00')
-                if user_travado.tipo_usuario == 'CAMBISTA' and user_travado.comissao_percentual > 0:
+                if user_travado.tipo_usuario == 'AFILIADO' and user_travado.comissao_percentual > 0:
                     raw_comissao = (valor_aposta * (user_travado.comissao_percentual / Decimal('100')))
                     CENTS = Decimal('0.01')
                     comissao_valor = raw_comissao.quantize(CENTS, rounding=ROUND_DOWN)

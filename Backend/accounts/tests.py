@@ -83,10 +83,12 @@ class FluxoPagamentoTests(TestCase):
         # 3. Verificações
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("qr_code", response.data)
-        self.assertEqual(response.data['id_transacao'], "transacao_fake_999")
+        # O sistema retorna o ID interno (int) para rastreabilidade
+        self.assertIn('id_transacao', response.data)
+        self.assertIsInstance(response.data['id_transacao'], int)
 
-        # Verifica se gravou no banco de teste
-        deposito_db = SolicitacaoPagamento.objects.get(id_externo="transacao_fake_999")
+        # Verifica se gravou no banco de teste usando o ID interno retornado
+        deposito_db = SolicitacaoPagamento.objects.get(id=response.data['id_transacao'])
         self.assertEqual(deposito_db.valor, Decimal('50.00'))
         self.assertEqual(deposito_db.status, 'PENDENTE')
     @override_settings(SKALEPAY_SECRET_KEY='chave_teste_123')

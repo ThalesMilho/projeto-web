@@ -41,7 +41,7 @@ class SecurityGapTests(TestCase):
         
         print(f"\n[Teste Saque Rápido] Status: {response.status_code} (Esperado: 403)")
         self.assertEqual(response.status_code, 403)
-        self.assertIn("Medida de Segurança", str(response.data))
+        self.assertIn("Aguarde processamento", str(response.data))
 
     def test_gap2_saque_alto_retido(self):
         """

@@ -49,7 +49,7 @@ urlpatterns = [
     path('saque/', SolicitarSaqueView.as_view(), name='solicitar-saque'), 
     
     # Webhook
-    path('webhook/skalepay/', SkalePayWebhookView.as_view(), name='webhook-skalepay'),
+    path('webhook/skalepay/', SkalePayWebhookView.as_view(), name='skalepay-webhook'),
 
     # Rotas do Router (Final)
     path('', include(router.urls)),
