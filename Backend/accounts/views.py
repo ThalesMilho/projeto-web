@@ -12,6 +12,8 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.utils import timezone
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
@@ -43,6 +45,125 @@ from .serializer import (
 )
 
 from games.models import Aposta, ParametrosDoJogo
+
+# Diagnostic imports
+import requests
+import traceback
+import logging
+import json
+
+# Logger for Render/console
+logger = logging.getLogger('django')
+
+
+# Diagnostic endpoint: Deep connectivity check to SkalePay
+@csrf_exempt
+def testar_conexao_skalepay(request):
+    """
+    Endpoint de Diagnóstico "Deep Dive" v2.0
+    Objetivo: Validar conectividade E2E com SkalePay sem derrubar o worker.
+    """
+
+    report = {
+        "etapa_1_ambiente": "N/A",
+        "etapa_2_configuracao": "N/A",
+        "etapa_3_conectividade": "N/A",
+        "timestamp_server": "",
+        "dados_tecnicos": {}
+    }
+
+    print("--- [QA DIAGNOSTIC] INICIANDO TESTE SKALEPAY ---")
+
+    try:
+        env_key = os.getenv('SKALEPAY_SECRET_KEY')
+        report['etapa_1_ambiente'] = "OK" if env_key else "FALHA - Variável de ambiente ausente"
+
+        django_key = getattr(settings, 'SKALEPAY_SECRET_KEY', None)
+        final_key = django_key or env_key
+
+        masked_key = "NULA"
+        if final_key:
+            if len(final_key) > 8:
+                masked_key = f"{final_key[:4]}...{final_key[-4:]}"
+            else:
+                masked_key = "***CURTA***"
+
+        report['dados_tecnicos']['chave_identificada'] = masked_key
+
+        if not final_key or final_key == '123456':
+            report['etapa_2_configuracao'] = "CRÍTICO: Chave não configurada ou é placeholder"
+            return JsonResponse(report, status=500)
+
+        report['etapa_2_configuracao'] = "OK - Chave carregada"
+
+        target_url = "https://api.conta.skalepay.com.br/v1/balance"
+
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "DiagnosticBot/2.0 (Render; Django)"
+        }
+
+        auth = (final_key, "")
+
+        print(f"--- [QA DIAGNOSTIC] Disparando Request para: {target_url}")
+
+        response = requests.get(
+            target_url,
+            auth=auth,
+            headers=headers,
+            timeout=10,
+            verify=True
+        )
+
+        report['dados_tecnicos']['http_status'] = response.status_code
+        report['dados_tecnicos']['latency_ms'] = response.elapsed.total_seconds() * 1000
+
+        try:
+            response_json = response.json()
+        except json.JSONDecodeError:
+            response_json = {"raw_text": response.text[:200]}
+
+        report['dados_tecnicos']['response_body'] = response_json
+
+        if response.status_code == 200:
+            report['etapa_3_conectividade'] = "SUCESSO - Conexão estabelecida e autenticada"
+            status_code = 200
+        elif response.status_code == 401:
+            report['etapa_3_conectividade'] = "FALHA - Acesso Negado (Chave Incorreta)"
+            status_code = 401
+        elif response.status_code == 403:
+            report['etapa_3_conectividade'] = "BLOQUEIO - WAF/IP Bloqueado pela SkalePay"
+            status_code = 403
+        else:
+            report['etapa_3_conectividade'] = f"ALERTA - Status inesperado: {response.status_code}"
+            status_code = 502
+
+        print("--- [QA DIAGNOSTIC] FINALIZADO COM SUCESSO ---")
+        return JsonResponse(report, status=status_code)
+
+    except requests.exceptions.ConnectTimeout:
+        print("--- [QA DIAGNOSTIC] ERRO: TIMEOUT ---")
+        report['etapa_3_conectividade'] = "TIMEOUT - Servidor não respondeu em 10s"
+        report['sugestao'] = "Verifique se o IP do Render está na whitelist da SkalePay."
+        return JsonResponse(report, status=504)
+
+    except requests.exceptions.SSLError as e:
+        print(f"--- [QA DIAGNOSTIC] ERRO: SSL -> {str(e)}")
+        report['etapa_3_conectividade'] = "ERRO SSL - Falha no certificado de segurança"
+        report['dados_tecnicos']['erro_detalhe'] = str(e)
+        return JsonResponse(report, status=502)
+
+    except Exception as e:
+        print("--- [QA DIAGNOSTIC] EXCEPTION FATAL ---")
+        traceback.print_exc()
+
+        report['etapa_3_conectividade'] = "CRASH INTERNO"
+        report['dados_tecnicos']['erro_tipo'] = str(type(e))
+        report['dados_tecnicos']['erro_msg'] = str(e)
+        report['dados_tecnicos']['traceback'] = traceback.format_exc()
+
+        return JsonResponse(report, status=500)
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
