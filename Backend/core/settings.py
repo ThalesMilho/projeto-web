@@ -2,6 +2,7 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 from datetime import timedelta 
+import dj_database_url
 
 load_dotenv() 
 
@@ -72,16 +73,22 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# Default: local SQLite for development
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'sistemabicho',      # Nome que criamos no pgAdmin
-        'USER': 'postgres',          # Usuário padrão
-        'PASSWORD': 'lya100104', 
-        'HOST': 'localhost',         # Roda na sua máquina
-        'PORT': '5432',              # Porta padrão
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+# If DATABASE_URL is present (e.g. Render), use it for production
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    DATABASES['default'] = dj_database_url.config(
+        default=database_url,
+        conn_max_age=600,
+        ssl_require=True
+    )
 
 
 # Password validation
