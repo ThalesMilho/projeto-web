@@ -422,45 +422,44 @@ class GerarDepositoPixView(APIView):
         serializer = DepositoSerializer(data=request.data)
         if serializer.is_valid():
             valor = serializer.validated_data['valor']
-            
-            # 1. Tenta gerar na SkalePay (ou usa Mock se der erro/ambiente dev)
             try:
-                resposta_gateway = SkalePayService.solicitar_deposito_pix(valor, request.user)
-            except Exception:
-                # Mock de Segurança para QA
-                import time
-                id_mock = f"mock_{int(time.time())}"
-                resposta_gateway = {
-                    "qr_code": "00020126580014BR.GOV.BCB.PIX...MOCK...",
-                    "qr_code_base64": "", 
-                    "transaction_id": id_mock
-                }
+                resposta_gateway = SkalePayService.gerar_pedido_deposito(request.user, valor)
 
-            # 2. [CORREÇÃO] Cria a Solicitação Primeiro (Obrigatório)
-            solicitacao = SolicitacaoPagamento.objects.create(
-                usuario=request.user,
-                tipo='DEPOSITO',
-                valor=valor,
-                status='PENDENTE',
-                id_externo=resposta_gateway['transaction_id']
-            )
+                # Cria a Solicitação no Banco
+                solicitacao = SolicitacaoPagamento.objects.create(
+                    usuario=request.user,
+                    tipo='DEPOSITO',
+                    valor=valor,
+                    status='PENDENTE',
+                    id_externo=str(resposta_gateway.get('transaction_id')),
+                    qr_code=resposta_gateway.get('qr_code'),
+                    qr_code_url=resposta_gateway.get('qr_code_url')
+                )
 
-            # 3. [CORREÇÃO] Cria o Extrato vinculado corretamente (sem campos inventados)
-            Transacao.objects.create(
-                usuario=request.user,
-                tipo='DEPOSITO',
-                valor=valor,
-                saldo_anterior=request.user.saldo,
-                saldo_posterior=request.user.saldo, 
-                descricao=f"Depósito via Pix",
-                origem_solicitacao=solicitacao
-            )
+                # Cria o registro financeiro (Extrato)
+                Transacao.objects.create(
+                    usuario=request.user,
+                    tipo='DEPOSITO',
+                    valor=valor,
+                    saldo_anterior=request.user.saldo,
+                    saldo_posterior=request.user.saldo,
+                    descricao=f"Aguardando Pagamento Pix",
+                    origem_solicitacao=solicitacao
+                )
 
-            # 4. [CORREÇÃO] Retorna o ID interno que o teste espera
-            resposta_final = resposta_gateway.copy()
-            resposta_final['id_transacao'] = solicitacao.id
-            
-            return Response(resposta_final, status=200)
+                return Response({
+                    "sucesso": True,
+                    "transaction_id": resposta_gateway.get('transaction_id'),
+                    "qr_code": resposta_gateway.get('qr_code'),
+                    "qr_code_url": resposta_gateway.get('qr_code_url'),
+                    "expira_em": resposta_gateway.get('expiration')
+                }, status=200)
+
+            except Exception as e:
+                return Response({
+                    "erro": "Falha ao gerar Pix",
+                    "detalhes": str(e)
+                }, status=500)
             
         return Response(serializer.errors, status=400)
     

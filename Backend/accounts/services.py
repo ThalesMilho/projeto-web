@@ -9,18 +9,17 @@ class SkalePayService:
     @staticmethod
     def _get_auth():
         # Basic Auth: Username=SecretKey, Password="x" (conforme doc SkalePay)
+        # A documentação SkalePay geralmente usa a Secret Key como 'username'
+        # no Basic Auth e a senha vazia ou 'x'. Usamos senha vazia.
         secret_key = getattr(settings, 'SKALEPAY_SECRET_KEY', '')
-        # Adicionamos o 'x' conforme a doc da SkalePay para validar o Basic Auth
-        return HTTPBasicAuth(secret_key, 'x')
+        return HTTPBasicAuth(secret_key, '')
 
     @staticmethod
     def _get_headers():
-        # Configuração "Bypass WAF" sugerida pelo Pleno
         return {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+            "accept": "application/json",
+            "content-type": "application/json",
+            "User-Agent": "PixLegal/1.0 (Django Backend)"
         }
 
     @staticmethod
@@ -30,40 +29,67 @@ class SkalePayService:
         Endpoint: /transactions
         """
         endpoint = f"{SkalePayService.BASE_URL}/transactions"
-        amount_cents = int(float(valor_reais) * 100) # R$ 10,00 -> 1000
+        try:
+            amount_cents = int(float(valor_reais) * 100)
+        except ValueError:
+            raise Exception("Valor inválido para depósito.")
 
         payload = {
             "amount": amount_cents,
             "paymentMethod": "pix",
             "postbackUrl": f"{getattr(settings, 'WEBHOOK_URL_BASE', '')}/api/accounts/webhook/skalepay/",
-            "items": [{
-                "title": "Credito Plataforma",
-                "unit_price": amount_cents,
-                "quantity": 1,
-                "tangible": False
-            }],
+            "items": [
+                {
+                    "title": "Creditos Plataforma",
+                    "unitPrice": amount_cents,
+                    "quantity": 1,
+                    "tangible": False,
+                    "externalRef": f"DEP-{usuario.id}"
+                }
+            ],
             "customer": {
-                "name": usuario.nome_completo[:100], # Limita caracteres por segurança
-                "email": usuario.email or "cliente@plataforma.com",
+                "name": getattr(usuario, 'nome_completo', None) or "Usuario Sem Nome",
+                "email": getattr(usuario, 'email', None),
                 "type": "individual",
                 "document": {
                     "type": "cpf",
-                    "number": usuario.cpf_cnpj.replace('.', '').replace('-', '') # Remove pontuação
+                    "number": getattr(usuario, 'cpf_cnpj', '').replace('.', '').replace('-', '')
                 }
+            },
+            "metadata": {
+                "usuario_id": str(getattr(usuario, 'id', '')),
+                "ambiente": "producao" if "sk_live" in (getattr(settings, 'SKALEPAY_SECRET_KEY', '') or "") else "sandbox"
             }
         }
 
         try:
+            print(f">>> [SKALEPAY] Enviando Request para: {endpoint}")
             response = requests.post(
                 endpoint,
                 json=payload,
                 auth=SkalePayService._get_auth(),
-                headers=SkalePayService._get_headers()
+                headers=SkalePayService._get_headers(),
+                timeout=15
             )
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"Erro SkalePay (Depósito): {e.response.text if e.response else str(e)}")
+
+            if response.status_code >= 400:
+                logger.error(f"Erro SkalePay: {response.text}")
+                raise Exception(f"Falha no Gateway: {response.status_code} - {response.text}")
+
+            dados = response.json()
+            pix_data = dados.get('pix', {})
+
+            return {
+                "transaction_id": dados.get('id'),
+                "status": dados.get('status'),
+                "qr_code": pix_data.get('qrcode'),
+                "qr_code_url": pix_data.get('url'),
+                "expiration": pix_data.get('expirationDate')
+            }
+
+        except Exception as e:
+            logger.exception("Erro ao gerar depósito SkalePay")
+            raise e
 
     @staticmethod
     def solicitar_saque_pix(usuario, valor_reais, chave_pix, referencia_interna):
