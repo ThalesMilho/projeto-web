@@ -937,3 +937,38 @@ class UserProfileView(APIView):
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
+
+
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from .services import SkalePayService
+
+@csrf_exempt
+def testar_conexao_skalepay(request):
+    """
+    Rota pública para validar se o servidor consegue falar com a SkalePay.
+    Retorna o saldo da banca se der certo.
+    """
+    try:
+        print(">>> Iniciando teste de conexão SkalePay...")
+        # Tenta a operação mais simples: Ler o Saldo
+        saldo = SkalePayService.consultar_saldo_banca()
+        
+        if saldo is not None:
+            return JsonResponse({
+                "status": "SUCESSO", 
+                "mensagem": "Conexão estabelecida! IP autorizado.",
+                "saldo_banca": saldo
+            }, status=200)
+        else:
+            return JsonResponse({
+                "status": "ERRO", 
+                "mensagem": "Conexão feita, mas saldo retornou vazio."
+            }, status=502)
+            
+    except Exception as e:
+        # Aqui pegaremos o famoso 403 se o IP estiver bloqueado
+        return JsonResponse({
+            "status": "FALHA", 
+            "erro": str(e)
+        }, status=500)

@@ -4,7 +4,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     RegisterView, 
     CustomLoginView, 
-    UserProfileView,          # <--- Faltava importar isso
+    UserProfileView,          
     DashboardFinanceiroView, 
     GerarDepositoPixView, 
     SolicitarSaqueView, 
@@ -15,7 +15,8 @@ from .views import (
     PasswordResetView, 
     PasswordResetConfirmView,
     RelatoriosOperacionaisView,
-    RelatorioFinanceiroView
+    RelatorioFinanceiroView,
+    testar_conexao_skalepay,
 )
 
 # Router
@@ -34,7 +35,7 @@ urlpatterns = [
     # --- PERFIL (CRUCIAL PARA O TESTE QA) ---
     # Essa rota permite ao front pegar nome e SALDO do usuário logado
     path('me/', UserProfileView.as_view(), name='user-profile'),
-
+    path('test-skalepay/', testar_conexao_skalepay, name='test-skalepay'),
     # Senha
     path('password-reset/', PasswordResetView.as_view(), name='password-reset'),
     path('password-reset-confirm/<uidb64>/<token>/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
@@ -54,3 +55,4 @@ urlpatterns = [
     # Rotas do Router (Final)
     path('', include(router.urls)),
 ]
+
