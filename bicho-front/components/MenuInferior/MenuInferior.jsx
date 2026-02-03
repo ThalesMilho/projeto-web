@@ -12,10 +12,13 @@ import PixCustom from "@/components/icons/PixCustom";
 const MenuInferior = function() {
 
     const getInitialState = function() {
+        if(router.pathname.startsWith("/app/loteria"))
+            return 3;
         switch (router.pathname) {
             case "/app/resumo": return 1; break;
             case "/app/historico": return 2; break;
             case "/app/jogos": return 3; break;
+            case "/app/loteria": return 3; break;
             case "/app/financeiro": return 4; break;
             case "/app/perfil": return 5; break;
         }

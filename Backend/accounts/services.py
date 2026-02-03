@@ -2,6 +2,11 @@ import requests
 from requests.auth import HTTPBasicAuth
 from django.conf import settings
 import logging
+from decimal import Decimal
+from rest_framework.exceptions import ValidationError
+
+# Gateway client wrapper (new)
+from .gateways.skalepay import SkalePayClient, SkalePayError
 
 class SkalePayService:
     BASE_URL = "https://api.conta.skalepay.com.br/v1"
@@ -28,68 +33,29 @@ class SkalePayService:
         Gera QR Code para Entrada de dinheiro (Cash-in).
         Endpoint: /transactions
         """
-        endpoint = f"{SkalePayService.BASE_URL}/transactions"
+        # Use the gateway client wrapper instead of performing raw requests here.
+        client = SkalePayClient()
         try:
-            amount_cents = int(float(valor_reais) * 100)
-        except ValueError:
-            raise Exception("Valor inválido para depósito.")
+            # Ensure value is Decimal for precise currency handling
+            valor_decimal = Decimal(str(valor_reais))
 
-        payload = {
-            "amount": amount_cents,
-            "paymentMethod": "pix",
-            "postbackUrl": f"{getattr(settings, 'WEBHOOK_URL_BASE', '')}/api/accounts/webhook/skalepay/",
-            "items": [
-                {
-                    "title": "Creditos Plataforma",
-                    "unitPrice": amount_cents,
-                    "quantity": 1,
-                    "tangible": False,
-                    "externalRef": f"DEP-{usuario.id}"
-                }
-            ],
-            "customer": {
-                "name": getattr(usuario, 'nome_completo', None) or "Usuario Sem Nome",
-                "email": getattr(usuario, 'email', None),
-                "type": "individual",
-                "document": {
-                    "type": "cpf",
-                    "number": getattr(usuario, 'cpf_cnpj', '').replace('.', '').replace('-', '')
-                }
-            },
-            "metadata": {
-                "usuario_id": str(getattr(usuario, 'id', '')),
-                "ambiente": "producao" if "sk_live" in (getattr(settings, 'SKALEPAY_SECRET_KEY', '') or "") else "sandbox"
+            dados_cliente = {
+                "nome": getattr(usuario, 'nome_completo', '') or getattr(usuario, 'first_name', ''),
+                "cpf": getattr(usuario, 'cpf_cnpj', ''),
+                "email": getattr(usuario, 'email', None)
             }
-        }
 
-        try:
-            print(f">>> [SKALEPAY] Enviando Request para: {endpoint}")
-            response = requests.post(
-                endpoint,
-                json=payload,
-                auth=SkalePayService._get_auth(),
-                headers=SkalePayService._get_headers(),
-                timeout=15
-            )
-
-            if response.status_code >= 400:
-                logger.error(f"Erro SkalePay: {response.text}")
-                raise Exception(f"Falha no Gateway: {response.status_code} - {response.text}")
-
-            dados = response.json()
-            pix_data = dados.get('pix', {})
+            resposta = client.gerar_pix_deposito(valor_decimal, dados_cliente)
 
             return {
-                "transaction_id": dados.get('id'),
-                "status": dados.get('status'),
-                "qr_code": pix_data.get('qrcode'),
-                "qr_code_url": pix_data.get('url'),
-                "expiration": pix_data.get('expirationDate')
+                "qr_code": resposta.get('pix_qrcode'),
+                "copy_paste": resposta.get('pix_emv'),
+                "transaction_id": resposta.get('id')
             }
 
-        except Exception as e:
-            logger.exception("Erro ao gerar depósito SkalePay")
-            raise e
+        except SkalePayError as e:
+            logger.exception("Erro ao gerar depósito via SkalePayClient")
+            raise ValidationError(f"Erro no processamento financeiro: {str(e)}")
 
     @staticmethod
     def solicitar_saque_pix(usuario, valor_reais, chave_pix, referencia_interna):

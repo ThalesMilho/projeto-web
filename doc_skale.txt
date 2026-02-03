@@ -1,0 +1,956 @@
+Introdução
+Bem vindo a nossa documentação de API!
+
+Introdução
+Nossa API segue os padrões REST. Sendo assim, todas as respostas serão enviadas no formato JSON.
+
+Para autenticar com nossa API, você deve passar sua chave secreta seguindo o padrão Basic Access Authentication.
+
+Você pode encontrar suas chaves acessando o menu Configurações -> Credenciais de API.
+
+Após encontrar suas chaves, você deve passar a chave secreta nos headers da requisição no campo authorization, seguindo o padrão abaixo:
+
+Node.js
+
+const options = {
+    method: "POST",
+    url: "https://api.conta.skalepay.com.br/v1/transactions",
+    headers: {
+        authorization: 'Basic ' + new Buffer("{SECRET_KEY}:x").toString('base64')
+    }
+} 
+
+Tokenizando cartão
+Ao criar transações com cartão de crédito, é necessário passar o token do cartão na requisição. Para gerar o token é muito simples, você só precisará importar nossa biblioteca javascript de tokenização em seu front-end. Insira o código a seguir no cabeçalho da sua página HTML:
+
+HTML
+
+<script src="https://api.conta.skalepay.com.br/v1/js"></script>
+Após o usuário preencher os dados do cartão e clicar em finalizar compra, você precisará gerar o hash do cartão usando o script a seguir:
+
+JavaScript
+
+SkalePay.setPublicKey("chave_publica_da_company")
+SkalePay.setTestMode(true)
+
+var token = await SkalePay.encrypt({
+  number: "4111111111111111",
+  holderName: "Bruce Wayne",
+  expMonth: 1,
+  expYear: 2025,
+  cvv: "123"
+})
+Pronto! Agora é só enviar o token na requisição para criar uma transação em nossa API.
+
+
+/
+
+Formato dos postbacks
+Ao criar uma transação, você pode passar uma URL para receber eventos em seu servidor quando uma transação for atualizada, através do campo postbackUrl. O formato do payload que você receberá nessa URL segue o formato abaixo:
+
+Transação
+TRANSAÇÃO
+
+{
+    "id": 686401,
+    "type": "transaction",
+    "objectId": "282",
+    "url": "https://test.com",
+    "data": {
+        "id": 282,
+        "amount": 10000,
+        "refundedAmount": 0,
+        "companyId": 2,
+        "installments": 12,
+        "paymentMethod": "credit_card",
+        "status": "paid",
+        "postbackUrl": null,
+        "metadata": null,
+        "traceable": false,
+        "secureId": "a4594817-be48-4a23-81aa-4bb01f95fe78",
+        "secureUrl": "https://link.compra.com.br/pagar/a4594817-be48-4a23-81aa-4bb01f95fe78",
+        "createdAt": "2022-07-18T09:54:22.000Z",
+        "updatedAt": "2022-07-18T09:54:22.000Z",
+        "paidAt": "2022-07-18T09:54:22.000Z",
+        "ip": null,
+        "externalRef": null,
+        "customer": {
+            "id": 1,
+            "externalRef": null,
+            "name": "Gabryel",
+            "email": "gabryel@hotmail.com",
+            "phone": "11999999999",
+            "birthdate": null,
+            "createdAt": "2022-05-26T19:17:48.000Z",
+            "document": {
+                "number": "12345678910",
+                "type": "cpf"
+            },
+            "address": {
+                "street": "Rua República Argentina",
+                "streetNumber": "4214",
+                "complement": null,
+                "zipCode": "11065030",
+                "neighborhood": "Pompéia",
+                "city": "Santos",
+                "state": "SP",
+                "country": "BR"
+            }
+        },
+        "card": {
+            "id": 147,
+            "brand": "visa",
+            "holderName": "GABRYEL FERREIRA",
+            "lastDigits": "1111",
+            "expirationMonth": 3,
+            "expirationYear": 2028,
+            "reusable": true,
+            "createdAt": "2022-07-17T18:08:11.000Z"
+        },
+        "boleto": null,
+        "pix": null,
+        "shipping": null,
+        "refusedReason": null,
+        "items": [
+            {
+                "externalRef": null,
+                "title": "b456",
+                "unitPrice": 100,
+                "quantity": 1,
+                "tangible": false
+            }
+        ],
+        "splits": [
+            {
+                "recipientId": 1,
+                "amount": 10000,
+                "netAmount": 9400
+            }
+        ],
+        "refunds": [],
+        "delivery": null,
+        "fee": {
+            "fixedAmount": 200,
+            "spreadPercentage": 4,
+            "estimatedFee": 600,
+            "netAmount": 9400
+        }
+    }
+}
+Checkout
+JSON
+
+{
+    "id": 686401,
+    "type": "checkout",
+    "objectId": "3",
+    "url": "https://test.com",
+    "data": {
+        "id": 3,
+        "companyId": 2,
+        "description": null,
+        "amount": 1000,
+        "secureId": "019c2702-6fbe-4199-b21c-c9342888d6ec",
+        "secureUrl": "https://link.compra.com.br/checkout/019c2702-6fbe-4199-b21c-c9342888d6ec",
+        "postbackUrl": "https://test.com",
+        "createdAt": "2022-08-02T18:04:04.000Z",
+        "settings": {
+            "defaultPaymentMethod": "credit_card",
+            "requestAddress": false,
+            "requestPhone": true,
+            "requestDocument": true,
+            "traceable": false,
+            "card": {
+                "enabled": true,
+                "freeInstallments": 1,
+                "maxInstallments": 12
+            },
+            "boleto": {
+                "enabled": false,
+                "expiresInDays": 2
+            },
+            "pix": {
+                "enabled": true,
+                "expiresInDays": 2
+            }
+        },
+        "items": [
+            {
+                "externalRef": null,
+                "title": "Hamburgão",
+                "unitPrice": 3000,
+                "quantity": 1,
+                "tangible": true
+            }
+        ],
+        "splits": [],
+        "transaction": {
+            "id": 282,
+            "amount": 10000,
+            "refundedAmount": 0,
+            "companyId": 2,
+            "installments": 12,
+            "paymentMethod": "credit_card",
+            "status": "paid",
+            "postbackUrl": null,
+            "metadata": null,
+            "traceable": false,
+            "secureId": "a4594817-be48-4a23-81aa-4bb01f95fe78",
+            "secureUrl": "https://link.compra.com.br/pagar/a4594817-be48-4a23-81aa-4bb01f95fe78",
+            "createdAt": "2022-07-18T09:54:22.000Z",
+            "updatedAt": "2022-07-18T09:54:22.000Z",
+            "paidAt": "2022-07-18T09:54:22.000Z",
+            "ip": null,
+            "externalRef": null,
+            "customer": {
+                "id": 1,
+                "externalRef": null,
+                "name": "Gabryel",
+                "email": "gabryel@hotmail.com",
+                "phone": "11999999999",
+                "birthdate": null,
+                "createdAt": "2022-05-26T19:17:48.000Z",
+                "document": {
+                    "number": "12345678910",
+                    "type": "cpf"
+                },
+                "address": {
+                    "street": "Rua República Argentina",
+                    "streetNumber": "4214",
+                    "complement": null,
+                    "zipCode": "11065030",
+                    "neighborhood": "Pompéia",
+                    "city": "Santos",
+                    "state": "SP",
+                    "country": "BR"
+                }
+            },
+            "card": {
+                "id": 147,
+                "brand": "visa",
+                "holderName": "GABRYEL FERREIRA",
+                "lastDigits": "1111",
+                "expirationMonth": 3,
+                "expirationYear": 2028,
+                "reusable": true,
+                "createdAt": "2022-07-17T18:08:11.000Z"
+            },
+            "boleto": null,
+            "pix": null,
+            "shipping": null,
+            "refusedReason": null,
+            "items": [
+                {
+                    "externalRef": null,
+                    "title": "b456",
+                    "unitPrice": 100,
+                    "quantity": 1,
+                    "tangible": false
+                }
+            ],
+            "splits": [
+                {
+                    "recipientId": 1,
+                    "amount": 10000,
+                    "netAmount": 9400
+                }
+            ],
+            "refunds": [],
+            "delivery": null,
+            "fee": {
+                "fixedAmount": 200,
+                "spreadPercentage": 4,
+                "estimatedFee": 600,
+                "netAmount": 9400
+            }
+        }
+    }
+}
+Transferência
+JSON
+
+{
+    "id": 388,
+    "type": "transfer",
+    "objectId": "237",
+    "url": "https://test.com",
+    "data": {
+        "id": 237,
+        "amount": 500,
+        "status": "bank_processing",
+        "pixKey": "12345678900",
+        "fee": 0,
+        "bankAccount": null,
+        "metadata": null,
+        "createdAt": "2022-10-18T16:43:42.000Z",
+        "updatedAt": "2022-10-18T16:43:44.000Z",
+        "failReason": null,
+        "receiptUrl": null,
+        "description": "Transferência Teste",
+        "externalRef": null,
+        "postbackUrl": "https://test.com",
+        "processedAt": "2022-10-18T16:43:44.000Z",
+        "recipientId": 1,
+        "pixEnd2EndId": "E277287121G6I8886MF02JNCUGGLELRP",
+        "transferredAt": null
+    }
+}
+Formato dos postbacks
+Ao criar uma transação, você pode passar uma URL para receber eventos em seu servidor quando uma transação for atualizada, através do campo postbackUrl. O formato do payload que você receberá nessa URL segue o formato abaixo:
+
+Transação
+TRANSAÇÃO
+
+{
+    "id": 686401,
+    "type": "transaction",
+    "objectId": "282",
+    "url": "https://test.com",
+    "data": {
+        "id": 282,
+        "amount": 10000,
+        "refundedAmount": 0,
+        "companyId": 2,
+        "installments": 12,
+        "paymentMethod": "credit_card",
+        "status": "paid",
+        "postbackUrl": null,
+        "metadata": null,
+        "traceable": false,
+        "secureId": "a4594817-be48-4a23-81aa-4bb01f95fe78",
+        "secureUrl": "https://link.compra.com.br/pagar/a4594817-be48-4a23-81aa-4bb01f95fe78",
+        "createdAt": "2022-07-18T09:54:22.000Z",
+        "updatedAt": "2022-07-18T09:54:22.000Z",
+        "paidAt": "2022-07-18T09:54:22.000Z",
+        "ip": null,
+        "externalRef": null,
+        "customer": {
+            "id": 1,
+            "externalRef": null,
+            "name": "Gabryel",
+            "email": "gabryel@hotmail.com",
+            "phone": "11999999999",
+            "birthdate": null,
+            "createdAt": "2022-05-26T19:17:48.000Z",
+            "document": {
+                "number": "12345678910",
+                "type": "cpf"
+            },
+            "address": {
+                "street": "Rua República Argentina",
+                "streetNumber": "4214",
+                "complement": null,
+                "zipCode": "11065030",
+                "neighborhood": "Pompéia",
+                "city": "Santos",
+                "state": "SP",
+                "country": "BR"
+            }
+        },
+        "card": {
+            "id": 147,
+            "brand": "visa",
+            "holderName": "GABRYEL FERREIRA",
+            "lastDigits": "1111",
+            "expirationMonth": 3,
+            "expirationYear": 2028,
+            "reusable": true,
+            "createdAt": "2022-07-17T18:08:11.000Z"
+        },
+        "boleto": null,
+        "pix": null,
+        "shipping": null,
+        "refusedReason": null,
+        "items": [
+            {
+                "externalRef": null,
+                "title": "b456",
+                "unitPrice": 100,
+                "quantity": 1,
+                "tangible": false
+            }
+        ],
+        "splits": [
+            {
+                "recipientId": 1,
+                "amount": 10000,
+                "netAmount": 9400
+            }
+        ],
+        "refunds": [],
+        "delivery": null,
+        "fee": {
+            "fixedAmount": 200,
+            "spreadPercentage": 4,
+            "estimatedFee": 600,
+            "netAmount": 9400
+        }
+    }
+}
+Checkout
+JSON
+
+{
+    "id": 686401,
+    "type": "checkout",
+    "objectId": "3",
+    "url": "https://test.com",
+    "data": {
+        "id": 3,
+        "companyId": 2,
+        "description": null,
+        "amount": 1000,
+        "secureId": "019c2702-6fbe-4199-b21c-c9342888d6ec",
+        "secureUrl": "https://link.compra.com.br/checkout/019c2702-6fbe-4199-b21c-c9342888d6ec",
+        "postbackUrl": "https://test.com",
+        "createdAt": "2022-08-02T18:04:04.000Z",
+        "settings": {
+            "defaultPaymentMethod": "credit_card",
+            "requestAddress": false,
+            "requestPhone": true,
+            "requestDocument": true,
+            "traceable": false,
+            "card": {
+                "enabled": true,
+                "freeInstallments": 1,
+                "maxInstallments": 12
+            },
+            "boleto": {
+                "enabled": false,
+                "expiresInDays": 2
+            },
+            "pix": {
+                "enabled": true,
+                "expiresInDays": 2
+            }
+        },
+        "items": [
+            {
+                "externalRef": null,
+                "title": "Hamburgão",
+                "unitPrice": 3000,
+                "quantity": 1,
+                "tangible": true
+            }
+        ],
+        "splits": [],
+        "transaction": {
+            "id": 282,
+            "amount": 10000,
+            "refundedAmount": 0,
+            "companyId": 2,
+            "installments": 12,
+            "paymentMethod": "credit_card",
+            "status": "paid",
+            "postbackUrl": null,
+            "metadata": null,
+            "traceable": false,
+            "secureId": "a4594817-be48-4a23-81aa-4bb01f95fe78",
+            "secureUrl": "https://link.compra.com.br/pagar/a4594817-be48-4a23-81aa-4bb01f95fe78",
+            "createdAt": "2022-07-18T09:54:22.000Z",
+            "updatedAt": "2022-07-18T09:54:22.000Z",
+            "paidAt": "2022-07-18T09:54:22.000Z",
+            "ip": null,
+            "externalRef": null,
+            "customer": {
+                "id": 1,
+                "externalRef": null,
+                "name": "Gabryel",
+                "email": "gabryel@hotmail.com",
+                "phone": "11999999999",
+                "birthdate": null,
+                "createdAt": "2022-05-26T19:17:48.000Z",
+                "document": {
+                    "number": "12345678910",
+                    "type": "cpf"
+                },
+                "address": {
+                    "street": "Rua República Argentina",
+                    "streetNumber": "4214",
+                    "complement": null,
+                    "zipCode": "11065030",
+                    "neighborhood": "Pompéia",
+                    "city": "Santos",
+                    "state": "SP",
+                    "country": "BR"
+                }
+            },
+            "card": {
+                "id": 147,
+                "brand": "visa",
+                "holderName": "GABRYEL FERREIRA",
+                "lastDigits": "1111",
+                "expirationMonth": 3,
+                "expirationYear": 2028,
+                "reusable": true,
+                "createdAt": "2022-07-17T18:08:11.000Z"
+            },
+            "boleto": null,
+            "pix": null,
+            "shipping": null,
+            "refusedReason": null,
+            "items": [
+                {
+                    "externalRef": null,
+                    "title": "b456",
+                    "unitPrice": 100,
+                    "quantity": 1,
+                    "tangible": false
+                }
+            ],
+            "splits": [
+                {
+                    "recipientId": 1,
+                    "amount": 10000,
+                    "netAmount": 9400
+                }
+            ],
+            "refunds": [],
+            "delivery": null,
+            "fee": {
+                "fixedAmount": 200,
+                "spreadPercentage": 4,
+                "estimatedFee": 600,
+                "netAmount": 9400
+            }
+        }
+    }
+}
+Transferência
+JSON
+
+{
+    "id": 388,
+    "type": "transfer",
+    "objectId": "237",
+    "url": "https://test.com",
+    "data": {
+        "id": 237,
+        "amount": 500,
+        "status": "bank_processing",
+        "pixKey": "12345678900",
+        "fee": 0,
+        "bankAccount": null,
+        "metadata": null,
+        "createdAt": "2022-10-18T16:43:42.000Z",
+        "updatedAt": "2022-10-18T16:43:44.000Z",
+        "failReason": null,
+        "receiptUrl": null,
+        "description": "Transferência Teste",
+        "externalRef": null,
+        "postbackUrl": "https://test.com",
+        "processedAt": "2022-10-18T16:43:44.000Z",
+        "recipientId": 1,
+        "pixEnd2EndId": "E277287121G6I8886MF02JNCUGGLELRP",
+        "transferredAt": null
+    }
+}
+//
+
+Ao criar uma transação, este é o objeto que você recebe como resposta. Você também receberá esse objeto quando ocorrer uma atualização de status da transação no seu postbackUrl.
+
+Propriedade	Descrição
+id
+int	ID da transação.
+status
+string	Status da transação.
+Valores possíveis: processing, authorized, paid, refunded, waiting_payment, refused, chargedback, canceled, in_protest, partially_paid
+amount
+string	Valor da transação em centavos.
+Exemplo: R$ 5,00 = 500
+authorizedAmount
+int	Valor autorizado em centavos.
+paidAmount
+int	Valor pago em centavos.
+refundedAmount
+int	Valor estornado em centavos.
+paymentMethod
+string	Meio de pagamento utilizado na transação.
+Valores possíveis: credit_card, pix, boleto
+installments
+int	Quantidade de parcelas da transação.
+acquirerType
+string	Adquirente responsável pelo processamento da transação.
+externalId
+string	ID da transação na adquirente.
+customer
+object	Dados do cliente. Consulte o objeto customer
+shipping
+object	Dados referente ao endereço de entrega. Consulte o objeto shipping
+card
+object	Dados do cartão de crédito. Consulte o objeto card
+pix
+object	Dados do PIX. Consulte o objeto pix
+boleto
+object	Dados do boleto bancário. Consulte o objeto boleto
+sendEmail
+boolean	Se será enviado um e-mail pela plataforma.
+companyId
+int	ID da empresa que criou a transação.
+subscriptionId
+int	Quando uma transação for criada a partir de uma assinatura da plataforma, esse campo estará preenchido com o ID dessa assinatura.
+billingId
+int	Quando uma transação for criada a partir de uma cobrança interna do painel de cobrança da plataforma, esse campo estará preenchido com o ID dessa cobrança.
+postbackUrl
+string	URL de postback que receberá as atualizações de status da transação.
+metadata
+object	Objeto com dados adicionais informados na criação da transação.
+traceable
+boolean	Se o status de entrega do pedido será gerenciado pela plataforma.
+secureId
+string	ID seguro da transação, para visualizá-la no próprio checkout da plataforma sem precisar de autenticação.
+secureUrl
+string	URL pós compra, para acessar os detalhes da transação sem autenticação.
+createdAt
+datetime	Data de criação da transação.
+updatedAt
+datetime	Data da última atualização da transação.
+ip
+string	IP de origem que criou a transação, podendo ser diretamente de seu cliente, caso a requisição venha diretamente do client-side, ou de seus servidores, caso tudo esteja centralizando em sua aplicação no server-side.
+refusedReason
+object	Quando uma transação no cartão de crédito for recusada, esse campo estará preenchido com o motivo da recusa. Consulte o objeto refusedReason
+items
+array	Dados sobre os produtos comprados. Consulte o objeto item
+refunds
+array	Caso seja realizado um estorno de uma transação, esse estorno estará contido nesse array. Consulte o objeto refund
+delivery
+object	Caso a propriedade traceable seja true, esse objeto estará preenchido com o status da entrega e código de rastreio. Consulte o objeto delivery
+fee
+object	Dados sobre as taxas cobradas na transação. Consulte o objeto fee
+splits
+object	Regras de divisão da transação. Consulte o objeto splits
+
+/
+
+Ao criar uma transação, você precisa passar os dados de envio dentro do objeto shipping, que são retornados no formato abaixo.
+
+Propriedade	Descrição
+id
+int	ID do objeto dos dados de envio (shipping).
+fee
+int	Valor de envio. Esse valor NÃO é adicionado no valor total da transação
+address
+object	Endereço de entrega. Consulte o objeto address
+
+/
+
+Ao criar uma transação, você precisa passar os dados do endereço dentro do objeto address, que são retornados no formato abaixo.
+
+Propriedade	Descrição
+id
+int	ID do endereço.
+street
+string	Nome da rua.
+streetNumber
+string	Número do endereço.
+complement
+string	Complemento.
+zipCode
+string	CEP. É retornado no formato 01452922
+neighborhood
+string	Bairro.
+city
+string	Cidade.
+state
+string	Estado. Apenas 2 caracteres em letra maiúscula.
+Exemplo: SP, RJ, etc.
+country
+string	País. Apenas 2 caracteres.
+Exemplo: BR
+//
+
+Objeto pix
+Ao criar uma transação no PIX, a propriedade pix estará preenchida no formato abaixo:
+
+Propriedade	Descrição
+qrcode
+string	QR code do PIX.
+url
+string	URL do PIX.
+expirationDate
+date	Data de expiração do PIX, no formato AAAA-MM-DD
+createdAt
+date	Data de criação.
+
+/
+Criar transação
+post
+https://api.conta.skalepay.com.br/v1/transactions
+
+Para criar uma transação, use a rota /transactions, tanto para cartão de crédito, boleto ou PIX.
+
+Body Params
+amount
+int32
+required
+Valor em centavos (500 = R$ 5,00)
+
+paymentMethod
+string
+required
+Meio de pagamento. Valores possíveis: credit_card, boleto, pix.
+
+card
+object
+Informações do cartão do cliente. Obrigatório caso paymentMethod seja credit_card.
+
+
+card object
+installments
+int32
+Quantidade de parcelas. Obrigatório caso paymentMethod seja credit_card.
+
+customer
+object
+required
+Dados do cliente.
+
+
+customer object
+shipping
+object
+Dados de entrega.
+
+
+shipping object
+items
+array of objects
+required
+Lista de itens da transação.
+
+
+ADD object
+boleto
+object
+Informações sobre a expiração do boleto.
+
+
+boleto object
+pix
+object
+Informações sobre a expiração do PIX.
+
+
+pix object
+postbackUrl
+string
+URL em sua API que receberá atualizações da transação.
+
+metadata
+string
+Metadados para facilitar a visualização e controle das transações.
+
+traceable
+boolean
+Se o status de entrega será gerenciado pelo painel. O padrão é false
+
+
+ip
+string
+IP do cliente.
+
+splits
+array of objects
+Regras de divisão da transação./
+/
+ Estornar transação
+post
+https://api.conta.skalepay.com.br/v1/transactions/{id}/refund
+
+
+Path Params
+id
+int32
+required
+ID da transação.
+
+Body Params
+amount
+int32
+Valor do estorno. Caso não seja informado, será considerado o valor da transação ou o valor restante para estorno.
+
+
+/
+Objeto transfer
+Propriedade	Descrição
+id
+int	ID da transferência.
+amount
+int	Valor da transferência em centavos.
+fee
+int	Taxa da transferência em centavos.
+status
+string	Status da transferência. Valores possíveis: pending, bank_processing, success, failed
+failReason
+string	Motivo da falha.
+createdAt
+datetime	Data de criação.
+updatedAt
+object	Data de atualização.
+bankAccount
+object	Conta bancária de destino.
+postbackUrl
+string	URL em sua API que receberá atualizações da transferência.
+
+/
+
+Criar transferência
+post
+https://api.conta.skalepay.com.br/v1/transfers
+
+Body Params
+amount
+int32
+required
+Valor da transferência em centavos.
+
+postbackUrl
+string
+URL em sua API que receberá atualizações da transferência.
+
+bankAccount
+object
+Conta bancária. Caso não seja informada, será usada a conta principal do recebedor.
+
+
+bankAccount object
+pixKey
+string
+Chave PIX de destino. Caso não seja informada, será usada a conta bancária principal do recebedor.
+
+recipientId
+int32
+ID do recebedor. Caso não seja enviado, será utilizado o recebedor primário da empresa.
+
+externalRef
+string
+Referência da transferência em sua API.
+
+/
+
+Buscar transferência
+get
+https://api.conta.skalepay.com.br/v1/transfers/{id}
+
+Path Params
+id
+int32
+required
+ID da transferência.
+
+/
+Obter saldo disponível
+get
+https://api.conta.skalepay.com.br/v1/balance/available
+
+Para operações de saldo, use a rota /balance.
+
+Query Params
+recipientId
+int32
+ID do recebedor. Caso não seja enviado, será usado o recebedor principal da empresa.
+
+/
+
+Criar recebedor
+post
+https://api.conta.skalepay.com.br/v1/recipients
+
+Body Params
+legalName
+string
+required
+Razão social.
+
+document
+object
+required
+CPF/CNPJ do recebedor.
+
+
+document object
+transferSettings
+object
+required
+Regras de transferência.
+
+
+transferSettings object
+bankAccount
+object
+required
+Conta bancária.
+
+
+bankAccount object
+
+ransferEnabled
+boolean
+required
+Transferência habilitada.
+
+
+true
+automaticAnticipationEnabled
+boolean
+required
+Antecipação automática habilitada.
+
+
+true
+anticipatableVolumePercentage
+int32
+required
+Volume antecipável.
+
+bankCode
+string
+required
+Código do banco.
+
+agencyNumber
+string
+required
+Número da agência.
+
+accountNumber
+string
+required
+Número da conta.
+
+accountDigit
+string
+required
+Dígito da conta.
+
+type
+string
+required
+Tipo da conta. Valores possíveis: conta_corrente, conta_poupanca.
+
+legalName
+string
+required
+Razão social.
+
+documentNumber
+string
+required
+CPF/CNPJ da conta bancária. Deve ser o mesmo do recebedor.
+
+documentType
+string
+required
+Tipo do documento. Valores possíveis: cpf, cnpj.
+
+number
+string
+required
+Número do documento.
+
+type
+string
+required
+Tipo do documento. Valores possíveis: cpf, CNPJ
+/
+

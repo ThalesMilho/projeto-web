@@ -208,3 +208,29 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Configuração do WhiteNoise para comprimir e servir os arquivos em produção
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# --- SKALEPAY / FINANCEIRO (integração) ---
+SKALEPAY_SECRET_KEY = os.getenv('SKALEPAY_SECRET_KEY', SKALEPAY_SECRET_KEY if 'SKALEPAY_SECRET_KEY' in globals() else '')
+SKALEPAY_WEBHOOK_URL = os.getenv('SKALEPAY_WEBHOOK_URL', f"{WEBHOOK_URL_BASE}/api/accounts/webhook/skalepay/")
+
+# Logging adicional para auditoria financeira
+LOGGING.setdefault('formatters', {})
+LOGGING['formatters'].setdefault('verbose', {
+    'format': '{levelname} {asctime} {module} {message}',
+    'style': '{',
+})
+
+LOGGING.setdefault('handlers', {})
+LOGGING['handlers'].setdefault('file', {
+    'level': 'INFO',
+    'class': 'logging.FileHandler',
+    'filename': os.path.join(BASE_DIR, 'financeiro.log'),
+    'formatter': 'verbose',
+})
+
+LOGGING.setdefault('loggers', {})
+LOGGING['loggers'].setdefault('skalepay_integration', {
+    'handlers': ['console', 'file'],
+    'level': 'INFO',
+    'propagate': True,
+})

@@ -35,6 +35,7 @@ export default function MyApp({ Component, pageProps, ...rest }) {
 
     const router = useRouter();
     const listaLayoutPuro = ['/login', '/cadastro'];
+    const ocultarHeaderInicial = ['/app/loteria'];
 
     useEffect(() => {
         const tk = getCookie("authToken");
@@ -95,10 +96,12 @@ export default function MyApp({ Component, pageProps, ...rest }) {
                 !loadingScreen && (
                     <ContextoUsuario.Provider value={[dadosUsuarioLogado, setDadosUsuarioLogado]}>
                         <div className="">
-                            <div>
-                                <Header/>
-                            </div>
-                            <div className="mb-28">
+                            {
+                                !ocultarHeaderInicial.map(e => router.pathname.startsWith(e))[0] ? <div>
+                                    <Header/>
+                                </div> : ''
+                            }
+                            <div className="">
                                 {
                                     verificarUsuarioLogado() ? (
                                         <div className="hidden md:block">
@@ -111,10 +114,15 @@ export default function MyApp({ Component, pageProps, ...rest }) {
                                 </div>
                             </div>
                             {
-                                verificarUsuarioLogado() ? (
-                                    <MenuInferior/>
-                                ) : ''
+                                !ocultarHeaderInicial.map(e => router.pathname.startsWith(e))[0] ? <>
+                                    {
+                                        verificarUsuarioLogado() ? (
+                                            <MenuInferior/>
+                                        ) : ''
+                                    }
+                                </> : ''
                             }
+
                         </div>
                     </ContextoUsuario.Provider>
                 )

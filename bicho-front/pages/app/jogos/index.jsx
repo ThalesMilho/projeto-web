@@ -1,8 +1,11 @@
 import UltimoGanhador from "@/components/UltimoGanhador/UltimoGanhador";
 import { DollarSign } from 'lucide-react';
 import UltimoGanhador2 from "@/components/UltimoGanhador/UltimoGanhador2";
+import { useRouter } from 'next/router';
 
 const Home = function() {
+    const router = useRouter();
+
     return (
         <div>
 
@@ -21,14 +24,14 @@ const Home = function() {
                             <img className="rounded-2xl drop-shadow-lg" src="/images/bicho.png" />
                             <div className="mt-3 font-semibold text-center">Jogo do bicho</div>
                         </div>
-                        <div>
+                        <div className="cursor-pointer" onClick={() => router.push('/app/loteria')}>
                             <img className="rounded-2xl drop-shadow-lg" src="/images/loteria.png" />
                             <div className="mt-3 font-semibold text-center">Loterias</div>
                         </div>
                     </div>
                 </div>
 
-                <div className="mt-4">
+                <div className="mt-4 mb-28">
                     <button className="bg-degrade-success text-white p-4 flex items-center justify-between rounded-3xl drop-shadow-lg relative w-full">
                         <div className="w-20 absolute -left-4">
                             <img src="/images/coinTwo.png" className="w-full" />
