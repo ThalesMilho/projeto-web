@@ -598,22 +598,29 @@ class SkalePayWebhookView(APIView):
     )
     def post(self, request):
         # 1. SEGURANÇA: Verificar Assinatura (HMAC SHA-256)
-        skalepay_signature = request.headers.get('X-SkalePay-Signature', '')
-        secret = getattr(settings, 'SKALEPAY_SECRET_KEY', '').encode('utf-8')
+        #skalepay_signature = request.headers.get('X-SkalePay-Signature', '')
+        #secret = getattr(settings, 'SKALEPAY_SECRET_KEY', '').encode('utf-8')
         
         # Só valida se tiver chave configurada (Evita erro em dev sem chave)
-        if secret:
-            payload_body = request.body
-            expected_signature = hmac.new(secret, payload_body, hashlib.sha256).hexdigest()
+        #if secret:
+        payload_body = request.body
+        expected_signature = hmac.new(secret, payload_body, hashlib.sha256).hexdigest()
             
-            # Comparação segura contra 'timing attacks'
-            if not hmac.compare_digest(skalepay_signature, expected_signature):
-                return Response({"erro": "Assinatura inválida/Forjada"}, status=403)
+        # Comparação segura contra 'timing attacks'
+        if not hmac.compare_digest(skalepay_signature, expected_signature):
+            return Response({"erro": "Assinatura inválida/Forjada"}, status=403)
 
         # 2. LER DADOS
         dados = request.data
-        id_externo = dados.get('transaction_id') # ID da transação na SkalePay
-        status_pagamento = dados.get('status')   # ex: 'PAID', 'FAILED'
+        data = dados.get('data', {})  # Webhook payload has nested 'data' field
+        id_externo = data.get('id') # ID da transação na SkalePay
+        status_pagamento = data.get('status')   # ex: 'paid', 'failed'
+        metadata = data.get('metadata', {})
+        usuario_id = metadata.get('usuario_id')  # Get user ID from metadata
+
+        if usuario_id is None:
+            logger.error("Usuario nao identificado no metadata", extra={"payload": dados})
+            return Response({"erro": "Usuario nao identificado no metadata"}, status=400)
         
         if not id_externo:
             return Response({"erro": "Payload sem ID"}, status=400)
@@ -625,9 +632,9 @@ class SkalePayWebhookView(APIView):
                     id_externo=id_externo,
                     defaults={
                         # Se não existir (Depósito direto sem pedir no site), cria agora
-                        'valor': Decimal(str(dados.get('amount', '0.00'))),
+                        'valor': Decimal(str(data.get('amount', '0.00'))) / 100,  # Convert from cents
                         'tipo': 'DEPOSITO',
-                        'usuario_id': dados.get('customer_custom_id'),
+                        'usuario_id': usuario_id,
                         'status': 'PENDENTE'
                     }
                 )
@@ -637,9 +644,9 @@ class SkalePayWebhookView(APIView):
                     return Response({"msg": "Já processado anteriormente"}, status=200)
 
                 # 3. DECISÃO
-                if status_pagamento == 'PAID':
+                if status_pagamento == 'paid':
                     self._efetivar_aprovacao(solicitacao)
-                elif status_pagamento in ['FAILED', 'CANCELED']:
+                elif status_pagamento in ['failed', 'canceled']:
                     solicitacao.status = 'RECUSADO'
                     solicitacao.save()
 

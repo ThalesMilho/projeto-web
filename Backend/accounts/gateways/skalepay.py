@@ -24,6 +24,19 @@ class SkalePayClient:
     
     BASE_URL = "https://api.conta.skalepay.com.br/v1"
     TIMEOUT = (3.05, 10)  # (Connect, Read) - 3s para conectar, 10s para ler
+
+    DEFAULT_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Connection": "keep-alive",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Content-Type": "application/json",
+    }
+
+    _shared_session: Optional[requests.Session] = None
+    _shared_session_api_key: Optional[str] = None
     
     def __init__(self):
         # Carrega a chave das variáveis de ambiente (Segurança)
@@ -36,21 +49,30 @@ class SkalePayClient:
             logger.critical("SKALEPAY_SECRET_KEY não configurada!")
             raise SkalePayError("Credenciais da SkalePay não encontradas.")
 
-        # Configura a sessão HTTP com Retry Strategy
-        self.session = requests.Session()
-        
-        # Conforme documentação: Basic Auth com User=Key e Pass='x'
-        self.session.auth = HTTPBasicAuth(self.api_key, 'x')
-        
-        retry_strategy = Retry(
-            total=3,
-            backoff_factor=1, # Espera 1s, 2s, 4s
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET", "POST", "PUT"]
-        )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        self.session.mount("https://", adapter)
-        self.session.mount("http://", adapter)
+        # Configura a sessão HTTP com Retry Strategy (singleton-like)
+        if SkalePayClient._shared_session is None or SkalePayClient._shared_session_api_key != self.api_key:
+            session = requests.Session()
+
+            # Headers robustos para reduzir bloqueios por WAF
+            session.headers.update(self.DEFAULT_HEADERS)
+
+            # Conforme documentação: Basic Auth com User=Key e Pass='x'
+            session.auth = HTTPBasicAuth(self.api_key, 'x')
+
+            retry_strategy = Retry(
+                total=3,
+                backoff_factor=1, # Espera 1s, 2s, 4s
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["HEAD", "GET", "POST", "PUT"]
+            )
+            adapter = HTTPAdapter(max_retries=retry_strategy)
+            session.mount("https://", adapter)
+            session.mount("http://", adapter)
+
+            SkalePayClient._shared_session = session
+            SkalePayClient._shared_session_api_key = self.api_key
+
+        self.session = SkalePayClient._shared_session
 
     def _to_cents(self, value: Union[Decimal, str, float]) -> int:
         """
@@ -87,7 +109,6 @@ class SkalePayClient:
                 url=url,
                 json=payload,
                 timeout=self.TIMEOUT,
-                headers={'Content-Type': 'application/json'}
             )
             
             response.raise_for_status()
@@ -173,7 +194,7 @@ class SkalePayClient:
         }
         return self._request("POST", "/recipients", payload)
 
-    def gerar_pix_deposito(self, valor: Decimal, customer_data: Dict) -> Dict:
+    def gerar_pix_deposito(self, valor: Decimal, customer_data: Dict, usuario_id: Optional[int] = None) -> Dict:
         """
         Gera um PIX para depósito (Cash-in).
         NOTA: O endpoint exato de PIX não estava no snippet da doc, 
@@ -181,38 +202,62 @@ class SkalePayClient:
         
         :param valor: Decimal (ex: Decimal('50.00'))
         :param customer_data: Dict com dados do cliente (nome, cpf)
+        :param usuario_id: ID do usuário para incluir no metadata (webhook identification)
         """
         cents = self._to_cents(valor)
         
         payload = {
             "amount": cents,
-            "paymentMethod": "PIX",
+            "paymentMethod": "pix",  # Corrigido para 'pix' minúsculo conforme documentação
             "customer": {
                 "name": customer_data.get('nome'),
                 "document": {
                     "number": customer_data.get('cpf'),
-                    "type": "CPF"
+                    "type": "cpf"
                 },
                 "email": customer_data.get('email')
             },
+            "items": [
+                {
+                    "title": "Deposito Pix",
+                    "unitPrice": cents,
+                    "quantity": 1,
+                    "tangible": False,
+                }
+            ],
             "postbackUrl": getattr(settings, 'SKALEPAY_WEBHOOK_URL', None)
         }
         
+        # Adiciona metadata com usuario_id para identificação no webhook
+        if usuario_id:
+            payload["metadata"] = {"usuario_id": usuario_id}
+        
         return self._request("POST", "/transactions", payload)
 
-    def solicitar_saque(self, recipient_id: str, valor: Decimal) -> Dict:
+    def solicitar_saque(self, pix_key: str, valor: Decimal, external_ref: Optional[str] = None, recipient_id: Optional[int] = None) -> Dict:
         """
-        Realiza uma transferência/saque (Cash-out).
-        Geralmente usa o endpoint /transfers ou similar.
+        Realiza uma transferência/saque (Cash-out) via PIX.
+        Endpoint: POST /transfers
+        
+        :param pix_key: Chave PIX de destino
+        :param valor: Valor do saque em Decimal
+        :param external_ref: Referência externa para rastreamento
+        :param recipient_id: ID do recebedor (opcional, usa principal se não informado)
         """
         cents = self._to_cents(valor)
         
         payload = {
             "amount": cents,
-            "recipientId": recipient_id,
-            "metadata": {
-                "origem": "Sistema Jogo do Bicho"
-            }
+            "pixKey": pix_key,
+            "description": "Saque Plataforma",
+            "postbackUrl": f"{getattr(settings, 'WEBHOOK_URL_BASE', '')}/api/accounts/webhook/skalepay/"
         }
-        # Endpoint hipotético baseado em padrões de gateway, verificar doc completa se diferente
+        
+        # Adiciona campos opcionais se fornecidos
+        if external_ref:
+            payload["externalRef"] = str(external_ref)
+            
+        if recipient_id:
+            payload["recipientId"] = recipient_id
+        
         return self._request("POST", "/transfers", payload)

@@ -1,7 +1,5 @@
-import requests
-from requests.auth import HTTPBasicAuth
-from django.conf import settings
 import logging
+import requests
 from decimal import Decimal
 from rest_framework.exceptions import ValidationError
 
@@ -9,23 +7,10 @@ from rest_framework.exceptions import ValidationError
 from .gateways.skalepay import SkalePayClient, SkalePayError
 
 class SkalePayService:
-    BASE_URL = "https://api.conta.skalepay.com.br/v1"
-
-    @staticmethod
-    def _get_auth():
-        # Basic Auth: Username=SecretKey, Password="x" (conforme doc SkalePay)
-        # A documentação SkalePay geralmente usa a Secret Key como 'username'
-        # no Basic Auth e a senha vazia ou 'x'. Usamos senha vazia.
-        secret_key = getattr(settings, 'SKALEPAY_SECRET_KEY', '')
-        return HTTPBasicAuth(secret_key, '')
-
-    @staticmethod
-    def _get_headers():
-        return {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "User-Agent": "PixLegal/1.0 (Django Backend)"
-        }
+    """
+    Service layer for SkalePay operations.
+    Uses SkalePayClient for all API communications.
+    """
 
     @staticmethod
     def gerar_pedido_deposito(usuario, valor_reais):
@@ -33,7 +18,6 @@ class SkalePayService:
         Gera QR Code para Entrada de dinheiro (Cash-in).
         Endpoint: /transactions
         """
-        # Use the gateway client wrapper instead of performing raw requests here.
         client = SkalePayClient()
         try:
             # Ensure value is Decimal for precise currency handling
@@ -45,11 +29,11 @@ class SkalePayService:
                 "email": getattr(usuario, 'email', None)
             }
 
-            resposta = client.gerar_pix_deposito(valor_decimal, dados_cliente)
+            resposta = client.gerar_pix_deposito(valor_decimal, dados_cliente, usuario.id)
 
             return {
-                "qr_code": resposta.get('pix_qrcode'),
-                "copy_paste": resposta.get('pix_emv'),
+                "qr_code": resposta.get('pix', {}).get('qrcode'),
+                "copy_paste": resposta.get('pix', {}).get('url'),
                 "transaction_id": resposta.get('id')
             }
 
@@ -63,34 +47,24 @@ class SkalePayService:
         Envia Pix REAL para o usuário (Cash-out).
         Endpoint: /transfers
         """
-        endpoint = f"{SkalePayService.BASE_URL}/transfers"
-
-        # Conversão Decimal -> Centavos (Evita erro de ponto flutuante)
-        amount_cents = int(valor_reais * 100)
-
-        payload = {
-            "amount": amount_cents,
-            "pixKey": str(chave_pix),
-            "externalRef": str(referencia_interna),
-            "description": "Saque Plataforma",
-            "postbackUrl": f"{getattr(settings, 'WEBHOOK_URL_BASE', '')}/api/accounts/webhook/skalepay/"
-        }
-
-        # Timeout maior (25s) para dar tempo do banco processar, mas não infinito
-        response = requests.post(
-            endpoint,
-            json=payload,
-            auth=SkalePayService._get_auth(),
-            headers=SkalePayService._get_headers(),
-            timeout=25
-        )
-        # Se der erro, lançamos uma Exceção com o TEXTO da resposta (o JSON explicativo)
-        if response.status_code >= 400:
-            msg_erro = f"Erro SkalePay (Saque): {response.status_code} {response.reason} - {response.text}"
-            logger.error(msg_erro)
-            raise Exception(msg_erro)
-
-        return response.json()
+        client = SkalePayClient()
+        try:
+            # Ensure value is Decimal for precise currency handling
+            valor_decimal = Decimal(str(valor_reais))
+            
+            resposta = client.solicitar_saque(
+                pix_key=str(chave_pix),
+                valor=valor_decimal,
+                external_ref=str(referencia_interna)
+            )
+            
+            return resposta
+            
+        except SkalePayError as e:
+            logger.exception("Erro ao solicitar saque via SkalePayClient")
+            if "timeout" in str(e).lower():
+                raise requests.exceptions.ReadTimeout(str(e))
+            raise ValidationError(f"Erro no processamento financeiro: {str(e)}")
 
     @staticmethod
     def consultar_saldo_banca():
@@ -98,19 +72,12 @@ class SkalePayService:
         Consulta o saldo disponível na conta da SkalePay antes de tentar pagar.
         Doc: GET /v1/balance/available
         """
-        endpoint = f"{SkalePayService.BASE_URL}/balance/available"
-        
+        client = SkalePayClient()
         try:
-            response = requests.get(
-                endpoint,
-                auth=SkalePayService._get_auth(),
-                headers={"Accept": "application/json"},
-                timeout=5
-            )
-            response.raise_for_status()
-            # Conversão segura: API retorna centavos (int), nós usamos float/decimal
-            return float(response.json().get('availableAmount', 0)) / 100.0
-        except Exception:
+            resposta = client.consultar_saldo()
+            # API retorna centavos, converte para reais
+            return float(resposta.get('availableAmount', 0)) / 100.0
+        except SkalePayError:
             return None
 
     @staticmethod
@@ -119,22 +86,11 @@ class SkalePayService:
         Verifica o status real de uma transferência na SkalePay.
         Doc: GET /v1/transfers/{id}
         """
-        endpoint = f"{SkalePayService.BASE_URL}/transfers/{id_transferencia_externo}"
-        
+        client = SkalePayClient()
         try:
-            response = requests.get(
-                endpoint,
-                auth=SkalePayService._get_auth(),
-                headers={"Accept": "application/json"},
-                timeout=15
-            )
-            if response.status_code == 404:
-                return "NAO_ENCONTRADO"
-                
-            response.raise_for_status()
-            return response.json().get('status')
-            
-        except requests.exceptions.RequestException:
+            response = client._request("GET", f"/transfers/{id_transferencia_externo}")
+            return response.get('status')
+        except SkalePayError:
             return "ERRO_COMUNICACAO"
 
 # Module logger
