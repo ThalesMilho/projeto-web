@@ -26,13 +26,21 @@ class SkalePayClient:
     TIMEOUT = (3.05, 10)  # (Connect, Read) - 3s para conectar, 10s para ler
 
     DEFAULT_HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
         "Connection": "keep-alive",
         "Cache-Control": "no-cache",
         "Pragma": "no-cache",
         "Content-Type": "application/json",
+        "sec-ch-ua": '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Linux"',
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-User": "?1",
+        "Sec-Fetch-Dest": "document",
+        "Upgrade-Insecure-Requests": "1",
     }
 
     _shared_session: Optional[requests.Session] = None
@@ -56,8 +64,9 @@ class SkalePayClient:
             # Headers robustos para reduzir bloqueios por WAF
             session.headers.update(self.DEFAULT_HEADERS)
 
-            # Conforme documentação: Basic Auth com User=Key e Pass='x'
-            session.auth = HTTPBasicAuth(self.api_key, 'x')
+            # Conforme documentação: Manual Basic Auth header to avoid library fingerprinting
+            auth_header = f"Basic {__import__('base64').b64encode(f'{self.api_key}:x'.encode()).decode()}"
+            session.headers['Authorization'] = auth_header
 
             retry_strategy = Retry(
                 total=3,
