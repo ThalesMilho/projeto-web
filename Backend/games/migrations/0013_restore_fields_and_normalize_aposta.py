@@ -73,11 +73,11 @@ class Migration(migrations.Migration):
             name='modalidade',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.PROTECT, related_name='apostas', to='games.modalidade'),
         ),
-        migrations.AddField(
-            model_name='aposta',
-            name='tipo_jogo',
-            field=models.CharField(blank=True, max_length=20, null=True),
-        ),
+       # migrations.AddField(
+       #     model_name='aposta',
+       #     name='tipo_jogo',
+       #     field=models.CharField(blank=True, max_length=20, null=True),
+       # ),
         migrations.AddField(
             model_name='aposta',
             name='palpite',
