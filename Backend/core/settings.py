@@ -80,7 +80,8 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
-
+if os.environ.get("DATABASE_URL"):
+    DATABASES['default'] = dj_database_url.parse(os.environ.get("DATABASE_URL"))
 # If DATABASE_URL is present (e.g. Render), use it for production
 database_url = os.getenv("DATABASE_URL")
 if database_url:

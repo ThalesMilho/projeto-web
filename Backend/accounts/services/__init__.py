@@ -4,7 +4,7 @@ from decimal import Decimal
 from rest_framework.exceptions import ValidationError
 
 # Gateway client wrapper (new)
-from .gateways.skalepay import SkalePayClient, SkalePayError
+from ..gateways.skalepay import SkalePayClient, SkalePayError
 
 class SkalePayService:
     """

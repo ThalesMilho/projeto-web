@@ -56,6 +56,7 @@ import os
 # Logger for Render/console
 logger = logging.getLogger('django')
 
+from .gateways.skalepay import SkalePayClient, SkalePayError
 
 # Diagnostic endpoint: Deep connectivity check to SkalePay
 @csrf_exempt

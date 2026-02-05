@@ -1,48 +1,49 @@
-from .models import Sorteio, Aposta, Transacao
+from .models import Sorteio, Aposta
+from accounts.services.wallet import WalletService
 from django.db import transaction
 from decimal import Decimal
+
+from .strategies import ValidadorFactory
 
 def apurar_sorteio(sorteio_id):
     """
     Processa todas as apostas vinculadas a um sorteio específico.
     """
     try:
-        sorteio = Sorteio.objects.get(id=sorteio_id)
-        if not sorteio.resultado:
-            raise ValueError("O sorteio não possui resultado definido.")
-
         with transaction.atomic():
-            for aposta in sorteio.apostas.select_for_update():
-                # Verifica se o palpite está nos resultados
-                ganhou = any(palpite in sorteio.resultado for palpite in aposta.palpites)
+            sorteio = Sorteio.objects.select_for_update().get(id=sorteio_id)
+
+            if sorteio.fechado:
+                return True
+
+            for aposta in Aposta.objects.select_for_update().select_related('modalidade').filter(sorteio_id=sorteio.pk):
+                strategy = ValidadorFactory.get_strategy(aposta.modalidade) if aposta.modalidade_id else None
+                if not strategy:
+                    aposta.ganhou = False
+                    aposta.valor_premio = Decimal('0.00')
+                    aposta.save(update_fields=['ganhou', 'valor_premio'])
+                    continue
+
+                ganhou = bool(strategy.verificar(aposta, sorteio))
                 aposta.ganhou = ganhou
 
                 if ganhou:
-                    # Calcula o prêmio com base na cotação
-                    premio = aposta.valor_aposta * aposta.modalidade.cotacao
+                    premio = (Decimal(str(aposta.valor)) * Decimal(str(aposta.modalidade.cotacao))).quantize(Decimal('0.01'))
                     aposta.valor_premio = premio
 
-                    # Cria uma transação de prêmio
-                    Transacao.objects.create(
-                        usuario=aposta.usuario,
+                    WalletService.credit(
+                        user_id=aposta.usuario_id,
+                        amount=premio,
+                        description=f"Prêmio do sorteio {sorteio.id}",
                         tipo='PREMIO',
-                        valor=premio,
-                        saldo_anterior=aposta.usuario.saldo,
-                        saldo_posterior=aposta.usuario.saldo + premio,
-                        descricao=f"Prêmio do sorteio {sorteio.id}"
                     )
-
-                    # Atualiza o saldo do usuário
-                    aposta.usuario.saldo += premio
-                    aposta.usuario.save()
                 else:
                     aposta.valor_premio = Decimal('0.00')
 
-                aposta.save()
+                aposta.save(update_fields=['ganhou', 'valor_premio'])
 
-            # Marca o sorteio como fechado
             sorteio.fechado = True
-            sorteio.save()
+            sorteio.save(update_fields=['fechado'])
 
         return True
 

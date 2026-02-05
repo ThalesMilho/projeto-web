@@ -4,13 +4,15 @@ from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 from drf_spectacular.utils import extend_schema_field
 from drf_spectacular.types import OpenApiTypes
-
 from .models import Aposta, Sorteio, Jogo, Modalidade, Colocacao
 
 logger = logging.getLogger(__name__)
 
 # --- SERIALIZER 1: Listar sorteios (GET) ---
 class SorteioSerializer(serializers.ModelSerializer):
+    """
+    Utilizado para listar os sorteios disponíveis no Frontend.
+    """
     status_display = serializers.SerializerMethodField()
 
     class Meta:
@@ -19,7 +21,6 @@ class SorteioSerializer(serializers.ModelSerializer):
 
     def get_status_display(self, obj):
         return "Fechado" if obj.fechado else "Aberto"
-
 
 # --- SERIALIZER 2: CRIAÇÃO DE APOSTAS (Com Adapter Pattern & Documentação) ---
 class CriarApostaSerializer(serializers.ModelSerializer):
@@ -30,6 +31,7 @@ class CriarApostaSerializer(serializers.ModelSerializer):
     """
     
     # --- Campos Legados (Compatibilidade com Frontend) ---
+    # write_only=True garante que não poluam a resposta, apenas a entrada
     tipo_jogo = serializers.CharField(
         required=False, 
         allow_null=True, 
@@ -113,7 +115,7 @@ class CriarApostaSerializer(serializers.ModelSerializer):
             return None
 
         clean_code = str(tipo_code).upper().strip()
-
+        
         # MAPA DE TRADUÇÃO (Adicione variações conforme necessário)
         LEGACY_CODE_MAP = {
             'M': 'Milhar',
@@ -199,7 +201,6 @@ class CriarApostaSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"sorteio": _("Este sorteio já está fechado.")})
 
         return attrs
-
 
 # --- SERIALIZER 3: DETALHES PARA O USUÁRIO (GET) ---
 class ApostaDetalheSerializer(serializers.ModelSerializer):

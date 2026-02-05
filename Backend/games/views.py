@@ -4,7 +4,6 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from django.utils import timezone
 from django.db import transaction, DatabaseError, IntegrityError
-from django.db.models import F
 from decimal import Decimal, ROUND_DOWN
 import logging
 from django.shortcuts import get_object_or_404, render
@@ -14,9 +13,8 @@ from .models import Sorteio, Aposta, ParametrosDoJogo
 from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 # Imports de outros apps e utilitários
-from accounts.models import Transacao
+from accounts.services.wallet import WalletService
 from .utils import descobrir_bicho
-from decimal import Decimal
 import math
 from collections import Counter
 
@@ -248,6 +246,7 @@ class ApostaViewSet(mixins.CreateModelMixin,
         return ApostaDetalheSerializer
 
     def create(self, request, *args, **kwargs):
+
         # --- NOVO: VERIFICAÇÃO DO KILL SWITCH ---
         # Antes de qualquer coisa, checa se o sistema está ligado no Admin
         config = ParametrosDoJogo.load()
@@ -281,21 +280,20 @@ class ApostaViewSet(mixins.CreateModelMixin,
             with transaction.atomic():
                 # Lock order: Sempre Sorteio -> Usuario (evita deadlocks)
                 sorteio_travado = Sorteio.objects.select_for_update().get(pk=sorteio_alvo.pk)
-                user_travado = type(user).objects.select_for_update().get(pk=user.pk)
 
-                # 3. Verifica Saldo
-                if user_travado.saldo < valor_aposta:
-                    return Response({"erro": "Saldo insuficiente."}, status=status.HTTP_400_BAD_REQUEST)
-
-                # 4. Verifica se o sorteio ainda está aberto
+                # 3. Verifica se o sorteio ainda está aberto
                 if sorteio_travado.fechado:
                     return Response({"erro": "Sorteio fechado."}, status=status.HTTP_400_BAD_REQUEST)
 
-                # 5. Debita o valor
-                saldo_anterior = user_travado.saldo
-                user_travado.saldo = F('saldo') - valor_aposta
-                user_travado.save()
-                user_travado.refresh_from_db()
+                # 4. Debita o valor (ACID)
+                WalletService.debit(
+                    user_id=user.pk,
+                    amount=valor_aposta,
+                    description=f"Aposta - {dados.get('tipo_jogo')} - {dados.get('palpite')}",
+                    tipo='APOSTA',
+                )
+
+                user_travado = type(user).objects.get(pk=user.pk)
 
                 # --- 6. LÓGICA DE CAMBISTA (Auto-comissão) ---
                 comissao_valor = Decimal('0.00')
@@ -304,20 +302,11 @@ class ApostaViewSet(mixins.CreateModelMixin,
                     CENTS = Decimal('0.01')
                     comissao_valor = raw_comissao.quantize(CENTS, rounding=ROUND_DOWN)
 
-                    # Credita comissão no saldo do próprio cambista
-                    prev_saldo = user_travado.saldo
-                    user_travado.saldo = F('saldo') + comissao_valor
-                    user_travado.save()
-                    user_travado.refresh_from_db()
-
-                    # Gera o LOG da comissão do cambista (Trazido para o lugar certo!)
-                    Transacao.objects.create(
-                        usuario=user_travado,
+                    WalletService.credit(
+                        user_id=user.pk,
+                        amount=comissao_valor,
+                        description=f"Comissão sobre aposta - {dados.get('palpite')} ({dados.get('tipo_jogo')})",
                         tipo='COMISSAO',
-                        valor=comissao_valor,
-                        saldo_anterior=prev_saldo,
-                        saldo_posterior=user_travado.saldo,
-                        descricao=f"Comissão sobre aposta - {dados['palpite']} ({dados['tipo_jogo']})"
                     )
 
                 # --- 7. SALVA A APOSTA ORIGINAL ---
@@ -346,18 +335,11 @@ class ApostaViewSet(mixins.CreateModelMixin,
                         tipo_jogo='MB',          
                         valor=Decimal('0.00'),   
                         palpite=palpite_brinde,
-                        comissao_gerada=Decimal('0.00')
+                        comissao_gerada=Decimal('0.00'),
+                        jogo=aposta.jogo,
+                        modalidade=aposta.modalidade,
+                        palpites=[palpite_brinde],
                     )
-
-                # --- 10. CRIA EXTRATO DA APOSTA ---
-                Transacao.objects.create(
-                    usuario=user_travado,
-                    tipo='APOSTA',
-                    valor=valor_aposta,
-                    saldo_anterior=saldo_anterior,
-                    saldo_posterior=user_travado.saldo, # Saldo final já descontado a aposta (e somado a comissão se for cambista)
-                    descricao=f"Jogo: {aposta.get_tipo_jogo_display()} - {aposta.palpite}"
-                )
 
                 read_serializer = ApostaDetalheSerializer(aposta)
                 return Response(read_serializer.data, status=status.HTTP_201_CREATED)
