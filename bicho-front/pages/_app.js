@@ -15,6 +15,7 @@ import MenuLateral from "@/components/MenuLateral/MenuLateral";
 import {useRouter} from "next/router";
 import {verificarUsuarioLogado} from "@/helpers/functions";
 import {usuarioStatus as tipoUsuario} from "@/models/usuario";
+import Head from "next/head";
 
 const poppins = Nunito_Sans({
     weight: ['200','300','400','500','600','700','800','900'],
@@ -35,7 +36,7 @@ export default function MyApp({ Component, pageProps, ...rest }) {
 
     const router = useRouter();
     const listaLayoutPuro = ['/login', '/cadastro'];
-    const ocultarHeaderInicial = ['/app/loteria'];
+    const ocultarHeaderInicial = ['/app/loteria', '/app/bicho'];
 
     useEffect(() => {
         const tk = getCookie("authToken");
@@ -78,10 +79,18 @@ export default function MyApp({ Component, pageProps, ...rest }) {
     }
 
     if(listaLayoutPuro.includes(router.pathname))
-        return <Component {...pageProps} />;
+        return <>
+            <Head>
+                <title>Maior Bicho</title>
+            </Head>
+            <Component {...pageProps} />
+        </>;
 
     return (
         <main className={poppins.className + " text-base"}>
+            <Head>
+                <title>Maior Bicho</title>
+            </Head>
             <ToastContainer />
             {
                 loadingScreen && (
@@ -97,7 +106,7 @@ export default function MyApp({ Component, pageProps, ...rest }) {
                     <ContextoUsuario.Provider value={[dadosUsuarioLogado, setDadosUsuarioLogado]}>
                         <div className="">
                             {
-                                !ocultarHeaderInicial.map(e => router.pathname.startsWith(e))[0] ? <div>
+                                !ocultarHeaderInicial.map(e => router.pathname.startsWith(e)).filter(e => e)[0] ? <div>
                                     <Header/>
                                 </div> : ''
                             }
@@ -114,7 +123,7 @@ export default function MyApp({ Component, pageProps, ...rest }) {
                                 </div>
                             </div>
                             {
-                                !ocultarHeaderInicial.map(e => router.pathname.startsWith(e))[0] ? <>
+                                !ocultarHeaderInicial.map(e => router.pathname.startsWith(e)).filter(e => e)[0] ? <>
                                     {
                                         verificarUsuarioLogado() ? (
                                             <MenuInferior/>

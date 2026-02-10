@@ -5,12 +5,18 @@ const BotaoMenuInferior = function({active, Icon, setActive, index}) {
     }
 
     return (
-        <button className="pt-1" onClick={() => changeTo(index)}>
-            <div
-                className={`w-full flex justify-center items-center -translate-y-1 rounded-2xl ${active ? "bg-white -translate-y-8" : "bg-transparent"} aspect-square!`}  style={ active ? {boxShadow: "0 0 10px 0px #3C7FFF",width: 80, height: 80} : {}}>
-                <div className={`transition-all text-white ${active ? "scale-150" : ""}`}>
-                    <Icon color={active ? "#3C7FFF" : "#fff"} size={30}/>
+        <button className="w-full h-full py-2" onClick={() => changeTo(index)}>
+            <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+                <div
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                        active
+                            ? 'bg-primary/10 shadow-sm'
+                            : 'bg-transparent'
+                    }`}
+                >
+                    <Icon color={active ? "#3C7FFF" : "#6B7280"} size={26}/>
                 </div>
+                <div className={`h-1 w-8 rounded-full transition-all ${active ? 'bg-primary' : 'bg-transparent'}`}></div>
             </div>
         </button>
     );

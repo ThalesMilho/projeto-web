@@ -29,8 +29,9 @@ const MenuInferior = function() {
 
 
     return (
-        <div className="w-full bg-primary h-17 fixed bottom-0 -box-shadow-menu-y lg:hidden" style={{ minHeight: '84px' }}>
-            <div className="grid grid-cols-4 h-full">
+        <div className="w-full fixed bottom-0 left-0 right-0 lg:hidden md:pl-64 lg:pl-72">
+            <div className="bg-white/95 backdrop-blur border-t-2 border-gray-200 shadow-2xl" style={{ minHeight: '84px' }}>
+                <div className="grid grid-cols-4 h-full px-2">
                 {/*<Link href="/app/resumo" className="flex justify-center items-center w-full">*/}
                 {/*    <BotaoMenuInferior setActive={setActive} index={1} active={active === 1} Icon={TicketCustom} />*/}
                 {/*</Link>*/}
@@ -46,6 +47,7 @@ const MenuInferior = function() {
                 <Link href="/app/perfil" className="flex justify-center items-center w-full">
                     <BotaoMenuInferior setActive={setActive} index={5} active={active === 5} Icon={UserCustom} />
                 </Link>
+                </div>
             </div>
         </div>
     );

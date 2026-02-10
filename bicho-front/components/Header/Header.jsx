@@ -12,7 +12,7 @@ const Header = function () {
     const logo = require("./../../public/images/logo.png");
     const [dadosUsuarioLogado, setDadosUsuarioLogado] = useContext(ContextoUsuario);
     const [saldo, setSaldo] = useState(0);
-    const userBalance = "30,00";
+    const userBalance = typeof saldo === 'number' ? toMoney(saldo) : 'R$ 0,00';
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isNotificationOpen, setIsNotificationOpen] = useState(false);
     const notificationRef = useRef(null);
@@ -113,7 +113,7 @@ const Header = function () {
                     <div className="flex items-center">
                         <button 
                             onClick={toggleMenu}
-                            className="mr-4 focus:outline-none md:hidden"
+                            className="mr-4 focus:outline-none md:hidden p-2 rounded-xl hover:bg-white/10 transition-colors"
                             aria-label="Menu"
                         >
                             {isMenuOpen ? <FaTimes size={24} /> : <FaBars size={24} />}
@@ -127,7 +127,7 @@ const Header = function () {
                         <div className="relative" ref={notificationRef}>
                             <button
                                 onClick={toggleNotifications}
-                                className="relative focus:outline-none hover:opacity-80 transition-opacity"
+                                className="relative focus:outline-none p-2 rounded-xl hover:bg-white/10 transition-colors"
                                 aria-label="Notificações"
                             >
                                 <FaBell size={24} />
@@ -206,9 +206,15 @@ const Header = function () {
                         </div>
 
                         {/* Balance */}
-                        <div className="p-2 rounded-md shadow-md" style={{ border: "1px solid #23ca76", backgroundColor: 'rgb(40 135 75)' }}>
-                            <span>Saldo: <b>R$ {userBalance}</b></span>
-                        </div>
+                        <button
+                            type="button"
+                            onClick={() => router.push('/app/financeiro')}
+                            className="px-3 py-2 rounded-2xl border border-white/25 bg-white/10 backdrop-blur shadow-sm hover:bg-white/15 transition-colors"
+                            aria-label="Ver saldo"
+                        >
+                            <span className="text-xs font-semibold text-white/90">Saldo</span>
+                            <div className="text-sm font-bold leading-tight">{userBalance}</div>
+                        </button>
                     </div>
                 </div>
             </div>

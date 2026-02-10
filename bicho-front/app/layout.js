@@ -13,7 +13,7 @@ const geistMono = localFont({
 });
 
 export const metadata = {
-  title: "Sala Pix",
+  title: "Maior Bicho",
   description: "Ganhe dinheiro em poucos minutos",
 };
 

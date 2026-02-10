@@ -41,10 +41,22 @@ const MenuLateral = function() {
     const [dadosUsuarioLogado] = useContext(ContextoUsuario);
 
     return (
-        <div className="fixed top-0 left-0 h-full bg-primary z-10 overflow-y-auto hidden md:block md:w-64 lg:w-72">
+        <div className="fixed top-0 left-0 h-full bg-background z-10 overflow-y-auto hidden md:block md:w-64 lg:w-72 border-r-2 border-gray-200">
             <div className="p-4 h-full">
-                <div className="mt-4 font-bold text-white">Menu</div>
-                <menu className="min-w-52 my-4 rounded-2xl shadow-xl">
+                <div className="bg-degrade rounded-3xl p-4 text-white shadow-lg">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center backdrop-blur">
+                            <Image src={logo} alt="Maior Bicho" width={26} height={26} />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="font-bold text-base leading-tight">Maior Bicho</div>
+                            <div className="text-xs text-white/90">Menu de navegação</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mt-4 font-bold text-gray-900">Menu</div>
+                <menu className="min-w-52 my-4 rounded-2xl bg-white border-2 border-gray-200 shadow-lg p-2">
                     <ul className="list-none">
                         <li className="mb-2">
                             <Link href="/app/jogos">
@@ -81,8 +93,8 @@ const MenuLateral = function() {
                 {
                     dadosUsuarioLogado?.tipo == usuarioStatus.admin && (
                         <>
-                            <div className="mt-4 font-bold text-white">Admin</div>
-                            <menu className="min-w-52 my-4 rounded-2xl shadow-xl overflow-y-auto">
+                            <div className="mt-4 font-bold text-gray-900">Admin</div>
+                            <menu className="min-w-52 my-4 rounded-2xl bg-white border-2 border-gray-200 shadow-lg p-2 overflow-y-auto">
                                 <ul className="list-none">
                                     <li className="mb-2">
                                         <Link href="/app/usuarios">
