@@ -44,7 +44,8 @@ class CustomUser(AbstractUser):
     # CPF/CNPJ usado como identificador único
     cpf_cnpj = models.CharField(max_length=14, unique=True, verbose_name="CPF ou CNPJ")
     phone = models.CharField(max_length=15, blank=True, null=True, verbose_name="WhatsApp")
-    saldo = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Saldo em Conta")    
+    # saldo = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Saldo em Conta")    
+    saldo = models.BigIntegerField(default=0, verbose_name="Saldo em Conta (Centavos)")    
     # --- SISTEMA DE BÔNUS ---
     recebeu_bonus = models.BooleanField(default=False)
     meta_rollover = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
@@ -198,7 +199,7 @@ class SolicitacaoPagamento(models.Model):
 
     usuario = models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='solicitacoes')
     tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
-    valor = models.DecimalField(max_digits=12, decimal_places=2)
+    valor = models.BigIntegerField(verbose_name="Valor (Centavos)")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDENTE')
     
     # Integração com Fintech (SkalePay)
@@ -285,12 +286,12 @@ class Transacao(models.Model):
     )
     usuario = models.ForeignKey(CustomUser, on_delete=models.PROTECT, related_name='extrato')
     tipo = models.CharField(max_length=10, choices=TIPO_CHOICES)
-    valor = models.DecimalField(max_digits=12, decimal_places=2) # Valor da movimentação
+    valor = models.BigIntegerField(verbose_name="Valor (Centavos)")
     
     # Snapshot do saldo: CRUCIAL para auditoria. 
     # Permite reconstruir a história e ver se bate com o saldo atual.
-    saldo_anterior = models.DecimalField(max_digits=12, decimal_places=2) 
-    saldo_posterior = models.DecimalField(max_digits=12, decimal_places=2)
+    saldo_anterior = models.BigIntegerField(verbose_name="Saldo Anterior (Centavos)")
+    saldo_posterior = models.BigIntegerField(verbose_name="Saldo Posterior (Centavos)")
     
     data = models.DateTimeField(auto_now_add=True)
     descricao = models.CharField(max_length=255, blank=True, null=True) # Ex: "Aposta #123 (Milhar)"

@@ -1,4 +1,5 @@
 import math
+from typing import List
 from itertools import permutations
 
 # --- 1. CONFIGURAÇÃO INICIAL (DEFAULTS) ---
@@ -105,4 +106,51 @@ def descobrir_bicho(milhar_string):
         return bicho
     except:
         return None
+
+def extract_numbers_from_string(text: str) -> List[int]:
+    """
+    Extrai números de uma string com vários separadores.
+    Lida com formatos: "01, 02, 05", "1-2-3", "1 2 3", "1,2,3", etc.
+    
+    Args:
+        text: String contendo números separados por vários delimitadores
+        
+    Returns:
+        Lista de inteiros (sem zeros à esquerda)
+        
+    Examples:
+        extract_numbers_from_string("01, 02, 05") -> [1, 2, 5]
+        extract_numbers_from_string("1-2-3") -> [1, 2, 3]
+        extract_numbers_from_string("1 2 3") -> [1, 2, 3]
+        extract_numbers_from_string("05") -> [5]
+    """
+    if not text or not isinstance(text, str):
+        return []
+    
+    try:
+        # 1. Normalização: substitui separadores comuns por espaços
+        import re
+        normalized = re.sub(r'[-,.\t\r\n]+', ' ', text.strip())
+        
+        # 2. Split por espaços e filtragem
+        parts = normalized.split()
+        numbers = []
+        
+        for part in parts:
+            # Remove qualquer caractere não-numérico restante
+            clean_part = re.sub(r'[^0-9]', '', part)
+            
+            if clean_part and clean_part.isdigit():
+                # Converte para int (remove zeros à esquerda automaticamente)
+                num = int(clean_part)
+                
+                # Validação: aceita apenas números de 0-99 (dezenas típicas)
+                if 0 <= num <= 99:
+                    numbers.append(num)
+        
+        return numbers
+        
+    except Exception:
+        # Fail-safe: retorna lista vazia em caso de erro
+        return []
     

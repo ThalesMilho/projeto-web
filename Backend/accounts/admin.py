@@ -6,7 +6,7 @@ class CustomUserAdmin(UserAdmin):
     model = CustomUser
     # Atualizado para refletir o diagrama
     # 1. Mude 'documento' -> 'cpf_cnpj' e 'nome' -> 'nome_completo'
-    list_display = ('cpf_cnpj', 'nome_completo', 'email', 'saldo', 'recebeu_bonus', 'is_staff')
+    list_display = ('cpf_cnpj', 'nome_completo', 'email', 'saldo_reais', 'recebeu_bonus', 'is_staff')
     
     # 2. Atualize a busca também
     search_fields = ('cpf_cnpj', 'nome_completo', 'email')
@@ -14,6 +14,12 @@ class CustomUserAdmin(UserAdmin):
 
     # 3. Corrija a ordenação
     ordering = ('cpf_cnpj',)
+
+    def saldo_reais(self, obj):
+        """Convert stored cents to R$ format for admin display."""
+        return f"R$ {obj.saldo / 100:.2f}"
+    saldo_reais.short_description = "Saldo (R$)"
+    saldo_reais.admin_order_field = 'saldo'
 
     fieldsets = UserAdmin.fieldsets + (
         ('Informações Pessoais', {'fields': ('nome_completo', 'cpf_cnpj', 'phone', 'saldo')}),

@@ -5,12 +5,27 @@ import re
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 class UserSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
-    saldo = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True) # Adiciona isto
+    password = serializers.CharField(write_only=True, help_text="Senha do usuário.")
+    # Change to IntegerField for cents, but display as Decimal
+    saldo_cents = serializers.IntegerField(
+        source='saldo', 
+        read_only=True,
+        help_text="Saldo em CENTAVOS. Divida por 100 para exibir em Reais."
+    )
+    saldo = serializers.SerializerMethodField(
+        help_text="Saldo formatado em Reais (ex: '10.50'). Já convertido para exibição."
+    )
+    nome_completo = serializers.CharField(help_text="Nome completo do usuário.")
+    cpf_cnpj = serializers.CharField(help_text="CPF ou CNPJ do usuário.")
+    phone = serializers.CharField(help_text="Número de telefone do usuário.")
 
     class Meta:
         model = CustomUser
-        fields = ('id', 'nome_completo', 'cpf_cnpj', 'phone', 'password', 'saldo')
+        fields = ('id', 'nome_completo', 'cpf_cnpj', 'phone', 'password', 'saldo', 'saldo_cents')
+
+    def get_saldo(self, obj):
+        """Convert stored cents to Decimal for display."""
+        return float(obj.saldo) / 100.0
 
     def validate_cpf_cnpj(self, value):
         """
@@ -79,7 +94,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['user_id'] = self.user.id
         data['nome'] = self.user.nome_completo
         data['is_admin'] = self.user.is_superuser
-        data['saldo'] = str(self.user.saldo)
+        # Convert cents to decimal for display (1000 -> 10.00)
+        data['saldo'] = float(self.user.saldo) / 100.0
         
         return data
     
@@ -104,6 +120,14 @@ class SolicitacaoPagamentoAdminSerializer(serializers.ModelSerializer):
             'tipo', 'valor', 'status', 'criado_em', 'data_aprovacao', 
             'analise_motivo', 'risco_score', #'comprovante_url'
         ]
+    
+    def to_representation(self, instance):
+        """Convert stored cents to Decimal for display."""
+        data = super().to_representation(instance)
+        if 'valor' in data and data['valor'] is not None:
+            # Convert cents to decimal (1050 -> 10.50)
+            data['valor'] = float(data['valor']) / 100.0
+        return data
 
 # 3. Serializer para Ação de Aprovar/Recusar
 class AnaliseSolicitacaoSerializer(serializers.Serializer):
@@ -118,4 +142,13 @@ class RiscoIPSerializer(serializers.Serializer):
 
 
 class DepositoSerializer(serializers.Serializer):
-    valor = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=1.00)
+    valor = serializers.IntegerField(
+        min_value=100,
+        help_text="Valor em CENTAVOS (ex: Para R$ 10,00 envie 1000). Não envie decimais."
+    )
+    
+    def validate_valor(self, value):
+        """Validate integer cents input."""
+        if value < 100:
+            raise serializers.ValidationError("Valor mínimo de depósito é R$ 1,00 (100 centavos).")
+        return value

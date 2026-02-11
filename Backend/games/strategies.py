@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from decimal import Decimal
+from typing import List, Set, Optional
 # Assumindo que você tem funções utilitárias para descobrir o bicho/grupo
-from .utils import descobrir_bicho 
+from .utils import descobrir_bicho, extrair_dezenas_sorteio, extract_numbers_from_string 
 
 class RegraJogoStrategy(ABC):
     """
@@ -35,6 +36,95 @@ class RegraJogoStrategy(ABC):
             return [todos_premios[0]]
 
 # --- ESTRATÉGIAS CONCRETAS ---
+
+class RegraLoteria(RegraJogoStrategy):
+    """
+    Estratégia para jogos de loteria (Lotinha, Quininha, Seninha).
+    Usa Teoria de Conjuntos para calcular interseção de forma eficiente.
+    """
+    
+    def __init__(self, quantidade_acertos_necessarios: int):
+        if not isinstance(quantidade_acertos_necessarios, int) or quantidade_acertos_necessarios <= 0:
+            raise ValueError("quantidade_acertos_necessarios deve ser um inteiro positivo")
+        self.quantidade_acertos_necessarios = quantidade_acertos_necessarios
+
+    def verificar(self, aposta, sorteio) -> bool:
+        """
+        Verifica se o usuário acertou a quantidade mínima de números.
+        Usa operações de conjunto para O(1) lookup time.
+        """
+        try:
+            # 1. Extração e normalização dos números sorteados
+            numeros_sorteados = self._extrair_numeros_sorteados(sorteio)
+            if not numeros_sorteados:
+                return False
+            
+            # 2. Extração e normalização dos palpites do usuário
+            palpites_usuario = self._extrair_palpites_usuario(aposta)
+            if not palpites_usuario:
+                return False
+            
+            # 3. Cálculo de interseção usando set operations (O(n+m) time complexity)
+            acertos = palpites_usuario.intersection(numeros_sorteados)
+            
+            # 4. Verificação de vitória
+            return len(acertos) >= self.quantidade_acertos_necessarios
+            
+        except Exception:
+            # Fail-safe: qualquer erro resulta em falsa vitória para não crashar o loop
+            return False
+    
+    def _extrair_numeros_sorteados(self, sorteio) -> Set[int]:
+        """
+        Extrai todos os números (dezenas) dos prêmios sorteados.
+        Usa função utilitária existente para consistência.
+        """
+        try:
+            dezenas_str = extrair_dezenas_sorteio(sorteio)
+            if not dezenas_str:
+                return set()
+            
+            # Converte strings de dezenas para inteiros, removendo zeros à esquerda
+            numeros = set()
+            for dezena_str in dezenas_str:
+                if dezena_str and dezena_str.isdigit():
+                    numeros.add(int(dezena_str))  # int() remove leading zeros automatically
+            
+            return numeros
+            
+        except Exception:
+            return set()
+    
+    def _extrair_palpites_usuario(self, aposta) -> Set[int]:
+        """
+        Extrai e normaliza os palpites do usuário.
+        Lida com vários formatos: strings, listas, separadores diferentes.
+        """
+        try:
+            palpites_brutos = aposta.palpites
+            
+            if not palpites_brutos:
+                return set()
+            
+            numeros = set()
+            
+            # Caso 1: Lista de strings/ints (formato JSON)
+            if isinstance(palpites_brutos, list):
+                for palpite in palpites_brutos:
+                    if palpite is not None:
+                        # Usa a função utilitária para normalização robusta
+                        nums = extract_numbers_from_string(str(palpite))
+                        numeros.update(nums)
+            
+            # Caso 2: String única (legado)
+            elif isinstance(palpites_brutos, str):
+                nums = extract_numbers_from_string(palpites_brutos)
+                numeros.update(nums)
+            
+            return numeros
+            
+        except Exception:
+            return set()
 
 class RegraBichoExata(RegraJogoStrategy):
     """
@@ -167,7 +257,38 @@ class ValidadorFactory:
         if "CENTENA" in nome: return RegraBichoExata(3)
         if "DEZENA" in nome: return RegraBichoExata(2)
         
-        # 4. Grupo Simples
+        # 4. Variantes de Loteria (Lotinha, Quininha, Seninha)
+        if "LOTINHA" in nome:
+            # Tenta buscar do modelo de parâmetros, senão usa default
+            from .models import ParametrosDoJogo
+            try:
+                config = ParametrosDoJogo.load()
+                acertos_necessarios = getattr(config, 'lotinha_acertos_necessarios', 15)
+            except:
+                acertos_necessarios = 15
+            return RegraLoteria(acertos_necessarios)
+        
+        if "QUININHA" in nome:
+            # Tenta buscar do modelo de parâmetros, senão usa default
+            from .models import ParametrosDoJogo
+            try:
+                config = ParametrosDoJogo.load()
+                acertos_necessarios = getattr(config, 'quininha_acertos_necessarios', 5)
+            except:
+                acertos_necessarios = 5
+            return RegraLoteria(acertos_necessarios)
+        
+        if "SENINHA" in nome:
+            # Tenta buscar do modelo de parâmetros, senão usa default
+            from .models import ParametrosDoJogo
+            try:
+                config = ParametrosDoJogo.load()
+                acertos_necessarios = getattr(config, 'seninha_acertos_necessarios', 6)
+            except:
+                acertos_necessarios = 6
+            return RegraLoteria(acertos_necessarios)
+
+        # 5. Grupo Simples
         if "GRUPO" in nome: return RegraGrupo()
         
         return None

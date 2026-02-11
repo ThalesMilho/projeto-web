@@ -83,7 +83,7 @@ class CriarApostaSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'criado_em', 'status', 'comissao_gerada', 'ganhou', 'valor_premio']
         extra_kwargs = {
             'palpites': {'required': False}, # Gerado dinamicamente no validate
-            'valor': {'required': True, 'min_value': Decimal('0.01')}
+            'valor': {'required': True, 'min_value': 100, 'help_text': 'Valor em centavos'}
         }
 
     def _normalize_palpites(self, legacy_palpite, current_palpites):
@@ -132,6 +132,11 @@ class CriarApostaSerializer(serializers.ModelSerializer):
             'PV': 'Passe Vai',
             'PVV': 'Passe Vai Vem',
             'TS': 'Terno Seco',
+            
+            # NOVAS VARIANTES DE LOTERIA
+            'L': 'Lotinha',
+            'Q': 'Quininha', 
+            'S': 'Seninha',
         }
 
         # 1. Tenta pegar o nome mapeado, ou usa o próprio código
@@ -212,6 +217,8 @@ class ApostaDetalheSerializer(serializers.ModelSerializer):
     nome_modalidade = serializers.CharField(source='modalidade.nome', read_only=True)
     nome_colocacao = serializers.CharField(source='colocacao.nome', read_only=True, allow_null=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    valor = serializers.SerializerMethodField(help_text="Valor da aposta em Reais (já convertido de centavos).")
+    valor_premio = serializers.SerializerMethodField(help_text="Valor do prêmio em Reais (já convertido de centavos).")
 
     class Meta:
         model = Aposta
@@ -229,3 +236,11 @@ class ApostaDetalheSerializer(serializers.ModelSerializer):
             'valor_premio', 
             'criado_em'
         ]
+
+    def get_valor(self, obj):
+        """Convert stored cents to Reais for display."""
+        return float(obj.valor) / 100.0
+
+    def get_valor_premio(self, obj):
+        """Convert stored cents to Reais for display."""
+        return float(obj.valor_premio) / 100.0 if obj.valor_premio else 0.0

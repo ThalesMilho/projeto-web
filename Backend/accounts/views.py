@@ -33,6 +33,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 # Local
 from .models import SolicitacaoPagamento, Transacao, CustomUser, MetricasDiarias
 from .services import SkalePayService
+from .saque_serializer import SolicitacaoSaqueSerializer
 from .serializer import (
     UserSerializer,
     CustomTokenObtainPairSerializer,
@@ -470,16 +471,7 @@ class SolicitarSaqueView(APIView):
     @extend_schema(
         summary="Solicitar Saque Pix",
         description="Solicita um saque. Verifica saldo, rollover, travas de tempo e risco. Tenta pagar automático ou envia para análise.",
-        request={
-            'application/json': {
-                'type': 'object',
-                'properties': {
-                    'valor': {'type': 'number', 'example': 150.00},
-                    'chave_pix': {'type': 'string', 'example': '12345678900'}
-                },
-                'required': ['valor', 'chave_pix']
-            }
-        },
+        request=SolicitacaoSaqueSerializer,
         responses={
             200: {'description': 'Saque realizado com sucesso (Automático)'},
             202: {'description': 'Saque em análise (Valor alto ou Risco)'},
@@ -488,18 +480,17 @@ class SolicitarSaqueView(APIView):
         }
     )
     def post(self, request):
-        # 1. Validação Básica
-        try:
-            valor = Decimal(str(request.data.get('valor')))
-            chave_pix = request.data.get('chave_pix')
-            if not chave_pix or valor <= 0:
-                raise ValueError
-        except:
-            return Response({"detail": "Dados inválidos."}, status=400)
-
+        # 1. Validação com Serializer
+        serializer = SolicitacaoSaqueSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        
+        valor_cents = serializer.validated_data['valor']
+        chave_pix = serializer.validated_data['chave_pix']
+        
         # 2. Proteção de Liquidez (Fail Fast)
         saldo_banca = SkalePayService.consultar_saldo_banca()
-        if saldo_banca is not None and saldo_banca < float(valor):
+        if saldo_banca is not None and saldo_banca < (valor_cents / 100.0):
             return Response({"detail": "Saque indisponível momentaneamente."}, status=503)
 
         # 3. Transação Atômica: Regras, Bloqueio e Débito
@@ -508,7 +499,7 @@ class SolicitarSaqueView(APIView):
                 user = CustomUser.objects.select_for_update().get(id=request.user.id)
 
                 # --- REGRA A: Saldo ---
-                if user.saldo < valor:
+                if user.saldo < valor_cents:
                     return Response({"detail": "Saldo insuficiente."}, status=400)
 
                 # --- REGRA B: Rollover ---
@@ -633,7 +624,8 @@ class SkalePayWebhookView(APIView):
                     id_externo=id_externo,
                     defaults={
                         # Se não existir (Depósito direto sem pedir no site), cria agora
-                        'valor': Decimal(str(data.get('amount', '0.00'))) / 100,  # Convert from cents
+                        # FIXED: Convert gateway amount to cents properly
+                        'valor': int(float(data.get('amount', '0.00')) * 100),  # Convert to cents
                         'tipo': 'DEPOSITO',
                         'usuario_id': usuario_id,
                         'status': 'PENDENTE'

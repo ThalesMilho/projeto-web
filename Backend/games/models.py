@@ -87,7 +87,8 @@ class ParametrosDoJogo(SingletonModel):
 
     ativa_apostas = models.BooleanField(default=True)
     milhar_brinde_ativa = models.BooleanField(default=False)
-    valor_minimo_para_brinde = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    # valor_minimo_para_brinde = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    valor_minimo_para_brinde = models.BigIntegerField(default=0, verbose_name="Valor Mínimo para Brinde (Centavos)")
 
 
 # Enum do Diagrama para Jogos
@@ -190,7 +191,7 @@ class Aposta(models.Model):
     colocacao = models.ForeignKey(Colocacao, on_delete=models.PROTECT, null=True, blank=True)
 
     # Diagrama: valor (valor da aposta)
-    valor = models.DecimalField(max_digits=10, decimal_places=2)
+    valor = models.BigIntegerField(verbose_name="Valor da Aposta (Centavos)")
 
     # Diagrama: palpites (json)
     # Define que o padrão é uma lista vazia para evitar nulls e facilitar uso
@@ -215,7 +216,7 @@ class Aposta(models.Model):
 
     # Campos de sistema não desenhados mas necessários
     ganhou = models.BooleanField(default=False)
-    valor_premio = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    valor_premio = models.BigIntegerField(verbose_name="Valor do Prêmio (Centavos)")
 
     class Meta:
         db_table = 'palpite_aposta' # Força o nome da tabela conforme diagrama

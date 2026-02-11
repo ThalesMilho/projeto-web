@@ -1,19 +1,27 @@
 from pathlib import Path
 import os
-from dotenv import load_dotenv
+from decouple import config, Csv
 from datetime import timedelta 
 import dj_database_url
 
-load_dotenv() 
+# Zero Trust: Fail fast if critical environment variables are missing
+if not config('SECRET_KEY', default=None):
+    raise ValueError("CRITICAL: SECRET_KEY environment variable is required for production deployment") 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-fallback')
+# Zero Trust: SECRET_KEY must be explicitly set in environment
+SECRET_KEY = config('SECRET_KEY')  # No default - crash if missing
 
-DEBUG = os.getenv('DEBUG', 'False') == 'True'
+# Zero Trust: DEBUG defaults to False for production safety
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['*']  
+# Zero Trust: ALLOWED_HOSTS from environment, no wildcards allowed
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='127.0.0.1,localhost', cast=Csv())
+
+# Zero Trust: Admin path obfuscation
+ADMIN_URL = config('ADMIN_URL', default='admin-secret-2024')  
 
 # Application definition
 
@@ -73,23 +81,21 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# Default: local SQLite for development
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Zero Trust: Database configuration with DATABASE_URL support
+DATABASE_URL = config('DATABASE_URL', default=None)
+
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(DATABASE_URL)
     }
-}
-if os.environ.get("DATABASE_URL"):
-    DATABASES['default'] = dj_database_url.parse(os.environ.get("DATABASE_URL"))
-# If DATABASE_URL is present (e.g. Render), use it for production
-database_url = os.getenv("DATABASE_URL")
-if database_url:
-    DATABASES['default'] = dj_database_url.config(
-        default=database_url,
-        conn_max_age=600,
-        ssl_require=True
-    )
+else:
+    # Development SQLite fallback
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -133,7 +139,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny', 
+        'rest_framework.permissions.IsAuthenticated',  # Zero Trust: Require authentication
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication', 
@@ -143,95 +149,113 @@ REST_FRAMEWORK = {
     # --- RATE LIMITING ---
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '5/minute',
-        'user': '60/minute'
+        'anon': '10/hour',  # More restrictive for anonymous users
+        'user': '1000/hour'  # Higher limit for authenticated users
     }
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+# Zero Trust: CORS configuration - whitelist only
+CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', default='', cast=Csv())
+CORS_ALLOW_CREDENTIALS = config('CORS_ALLOW_CREDENTIALS', default=False, cast=bool)
 
-AUTH_USER_MODEL = 'accounts.CustomUser'
+# Zero Trust: CSRF trusted origins from environment
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='', cast=Csv())
 
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60), # O "crachá" dura 60 minutos
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),    # A renovação dura 1 dia
-    'ROTATE_REFRESH_TOKENS': False,
-    'BLACKLIST_AFTER_ROTATION': False,
-}
-
-CSRF_TRUSTED_ORIGINS = [
-    'https://*.ngrok-free.app',
-]
-
-# --- LOGGING CONFIGURATION (Segurança / LGPD) ---
+# --- LOGGING CONFIGURATION (Zero Trust / LGPD Compliance) ---
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'filters': {
         'mask_sensitive_data': {
-            '()': 'core.logging_filters.SensitiveDataFilter', # Aponta para o arquivo que criamos
+            '()': 'core.logging_filters.SensitiveDataFilter',
+        },
+    },
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'secure': {
+            'format': '{asctime} {levelname} {message}',
+            'style': '{',
         },
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
-            'filters': ['mask_sensitive_data'], # Aplica a máscara no terminal
+            'filters': ['mask_sensitive_data'],
+            'formatter': 'verbose',
+        },
+        'file': {
+            'level': config('LOG_LEVEL', default='INFO'),
+            'class': 'logging.FileHandler',
+            'filename': config('LOG_FILE_PATH', default=os.path.join(BASE_DIR, 'app.log')),
+            'formatter': 'secure',
+            'filters': ['mask_sensitive_data'],
         },
     },
     'root': {
-        'handlers': ['console'],
-        'level': 'INFO', # Em produção, mudamos para 'WARNING'
+        'handlers': ['console', 'file'],
+        'level': config('LOG_LEVEL', default='INFO'),
+    },
+    'loggers': {
+        'skalepay_integration': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,  # Don't propagate to root logger
+        },
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': config('DJANGO_LOG_LEVEL', default='WARNING'),
+            'propagate': False,
+        },
     },
 }
 
-SKALEPAY_SECRET_KEY = os.getenv('SKALEPAY_SECRET_KEY', '')
-SKALEPAY_PUBLIC_KEY = os.getenv('SKALEPAY_PUBLIC_KEY', '')
-SKALEPAY_BASE_URL = os.getenv('SKALEPAY_BASE_URL', 'https://api.conta.skalepay.com.br/v1')
-WEBHOOK_URL_BASE = os.getenv('RENDER_EXTERNAL_URL', 'https://projeto-web-izeu.onrender.com')
+AUTH_USER_MODEL = 'accounts.CustomUser'
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=config('JWT_ACCESS_TOKEN_MINUTES', default=60, cast=int)),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=config('JWT_REFRESH_TOKEN_DAYS', default=1, cast=int)),
+    'ROTATE_REFRESH_TOKENS': config('JWT_ROTATE_REFRESH_TOKENS', default=True, cast=bool),  # Security: Enable rotation
+    'BLACKLIST_AFTER_ROTATION': config('JWT_BLACKLIST_AFTER_ROTATION', default=True, cast=bool),  # Security: Blacklist old tokens
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+}
+# Zero Trust: External API configuration
+SKALEPAY_SECRET_KEY = config('SKALEPAY_SECRET_KEY')  # No default - fail if missing
+SKALEPAY_PUBLIC_KEY = config('SKALEPAY_PUBLIC_KEY')  # No default - fail if missing
+SKALEPAY_BASE_URL = config('SKALEPAY_BASE_URL', default='https://api.conta.skalepay.com.br/v1')
+WEBHOOK_URL_BASE = config('WEBHOOK_URL_BASE', default='')
+
+# Zero Trust: Security headers configuration
+if not DEBUG:
+    SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=True, cast=bool)
+    SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=31536000, cast=int)  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = config('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=True, cast=bool)
+    SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=True, cast=bool)
+    SECURE_CONTENT_TYPE_NOSNIFF = config('SECURE_CONTENT_TYPE_NOSNIFF', default=True, cast=bool)
+    SECURE_BROWSER_XSS_FILTER = config('SECURE_BROWSER_XSS_FILTER', default=True, cast=bool)
+    X_FRAME_OPTIONS = config('X_FRAME_OPTIONS', default='DENY')
+    SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=True, cast=bool)
+    CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=True, cast=bool)
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'PixLegal API',
-    'DESCRIPTION': 'API de Gestão de Apostas e Financeiro',
-    'VERSION': '1.0.0',
+    'TITLE': config('API_TITLE', default='PixLegal API'),
+    'DESCRIPTION': config('API_DESCRIPTION', default='API de Gestão de Apostas e Financeiro'),
+    'VERSION': config('API_VERSION', default='1.0.0'),
     'COMPONENT_SPLIT_REQUEST': True,
 }
 
+# --- CONFIGURAÇÕES DE ARQUIVOS ESTÁTICOS ---
+STATIC_URL = config('STATIC_URL', default='/static/')
+STATIC_ROOT = config('STATIC_ROOT', default=os.path.join(BASE_DIR, 'staticfiles'))
+STATICFILES_STORAGE = config('STATICFILES_STORAGE', default='whitenoise.storage.CompressedManifestStaticFilesStorage')
 
-# --- CONFIGURAÇÕES DE ARQUIVOS ESTÁTICOS (ADICIONAR NO FINAL) ---
-import os  # Garante que o os está disponível aqui
-
-# URL usada pelo navegador para acessar os arquivos
-STATIC_URL = '/static/'
-
-# Pasta onde o Django vai reunir todos os arquivos (Obrigatório para o comando funcionar)
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-
-# Configuração do WhiteNoise para comprimir e servir os arquivos em produção
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
-# --- SKALEPAY / FINANCEIRO (integração) ---
-SKALEPAY_SECRET_KEY = os.getenv('SKALEPAY_SECRET_KEY', SKALEPAY_SECRET_KEY if 'SKALEPAY_SECRET_KEY' in globals() else '')
-SKALEPAY_WEBHOOK_URL = os.getenv('SKALEPAY_WEBHOOK_URL', f"{WEBHOOK_URL_BASE}/api/accounts/webhook/skalepay/")
-
-# Logging adicional para auditoria financeira
-LOGGING.setdefault('formatters', {})
-LOGGING['formatters'].setdefault('verbose', {
-    'format': '{levelname} {asctime} {module} {message}',
-    'style': '{',
-})
-
-LOGGING.setdefault('handlers', {})
-LOGGING['handlers'].setdefault('file', {
-    'level': 'INFO',
-    'class': 'logging.FileHandler',
-    'filename': os.path.join(BASE_DIR, 'financeiro.log'),
-    'formatter': 'verbose',
-})
-
-LOGGING.setdefault('loggers', {})
-LOGGING['loggers'].setdefault('skalepay_integration', {
-    'handlers': ['console', 'file'],
-    'level': 'INFO',
-    'propagate': True,
-})
+# --- SKALEPAY / FINANCEIRO ---
+SKALEPAY_WEBHOOK_URL = config('SKALEPAY_WEBHOOK_URL', default=f"{WEBHOOK_URL_BASE}/api/accounts/webhook/skalepay/" if WEBHOOK_URL_BASE else '')

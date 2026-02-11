@@ -3,13 +3,14 @@
 from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+from django.conf import settings
 
-# NOTA: Não precisamos mais definir 'schema_view' aqui. 
-# O drf-spectacular pega as configurações automaticamente do settings.py.
+# Zero Trust: Dynamic admin path from environment
+admin_url = getattr(settings, 'ADMIN_URL', 'admin-secret-2024')
 
 urlpatterns = [
-    # 1. Painel Administrativo do Django
-    path('admin/', admin.site.urls),
+    # 1. Painel Administrativo do Django (Obfuscated Path)
+    path(f'{admin_url}/', admin.site.urls),
     
     # 2. Rotas da sua API (Accounts e Games)
     path('api/accounts/', include('accounts.urls')),
