@@ -28,21 +28,20 @@ ADMIN_URL = config('ADMIN_URL', default='admin/')
 
 # ==================== DATABASE CONFIGURATION ====================
 
-# Database URL (use environment variable for production)
-DATABASE_URL = config('DATABASE_URL', default='', cast=str)
+# SECURITY: PostgreSQL ONLY - No fallback to SQLite
+DATABASE_URL = config('DATABASE_URL')
 
-if DATABASE_URL:
-    DATABASES = {
-        'default': dj_database_url.parse(DATABASE_URL)
-    }
-else:
-    # Fallback to SQLite for development only
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+# CRITICAL: Fail fast if PostgreSQL is not configured
+if not DATABASE_URL:
+    raise ImproperlyConfigured(
+        "DATABASE_URL environment variable is required. "
+        "This application requires PostgreSQL - SQLite fallback is disabled for security."
+    )
+
+# Parse and configure PostgreSQL with production settings
+DATABASES = {
+    'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
+}
 
 # ==================== APPLICATION CONFIGURATION ====================
 

@@ -181,8 +181,8 @@ class Aposta(models.Model):
 
     # Diagrama: palpite_aposta
 
-    # Diagrama: usuario_id
-    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='apostas')
+    # Diagrama: usuario_id - PROTECT to preserve betting history
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='apostas')
 
     jogo = models.ForeignKey(Jogo, on_delete=models.PROTECT, null=True, blank=True, related_name='apostas')
     modalidade = models.ForeignKey(Modalidade, on_delete=models.PROTECT, null=True, blank=True, related_name='apostas')
@@ -197,10 +197,9 @@ class Aposta(models.Model):
     # Define que o padrão é uma lista vazia para evitar nulls e facilitar uso
     palpites = models.JSONField(default=list)
 
-    # Backward compatibility with legacy frontend payloads
-    tipo_jogo = models.CharField(max_length=20, blank=True, null=True)
-    palpite = models.CharField(max_length=50, blank=True, null=True)
-    comissao_gerada = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    # Backward compatibility removed - cleaned up
+    # tipo_jogo and palpite removed, keeping only palpites JSONField
+    comissao_gerada = models.BigIntegerField(default=0, verbose_name="Comissão Gerada (Centavos)")
 
     # Diagrama: status (Enum)
     status = models.CharField(
@@ -220,3 +219,8 @@ class Aposta(models.Model):
 
     class Meta:
         db_table = 'palpite_aposta' # Força o nome da tabela conforme diagrama
+        indexes = [
+            models.Index(fields=['usuario', 'criado_em']),
+            models.Index(fields=['sorteio', 'status']),
+            models.Index(fields=['status', 'ganhou']),
+        ]

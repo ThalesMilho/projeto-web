@@ -115,12 +115,22 @@ class SecurityConfigTestCase(TestCase):
                      "JWT algorithm should be specified")
 
     def test_database_url_configuration(self):
-        """Test database configuration supports DATABASE_URL"""
-        # Test with DATABASE_URL
-        with override_settings(DATABASE_URL='sqlite:///:memory:'):
+        """Test database configuration supports PostgreSQL ONLY"""
+        # Test with PostgreSQL URL
+        with override_settings(DATABASE_URL='postgresql://user:pass@localhost:5432/testdb'):
             from django.db import connection
             # Should not raise an exception
             self.assertIsNotNone(connection.settings_dict)
+            self.assertEqual(connection.settings_dict['ENGINE'], 'django.db.backends.postgresql')
+        
+        # Test that SQLite fallback is NOT allowed
+        with override_settings(DATABASE_URL=None):
+            with self.assertRaises(ImproperlyConfigured) as context:
+                # Reload settings to trigger validation
+                from django.conf import settings
+                settings._wrapped = None  # Force reload
+                
+            self.assertIn("DATABASE_URL environment variable is required", str(context.exception))
 
     def test_external_api_keys_required(self):
         """Test that external API keys are required"""

@@ -109,6 +109,14 @@ class CustomUser(AbstractUser):
 
     objects = CustomUserManager()
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['cpf_cnpj']),
+            models.Index(fields=['data_primeiro_deposito']),
+            models.Index(fields=['tipo_usuario']),
+            models.Index(fields=['conta_suspeita']),
+        ]
+
     def __str__(self):
         return self.cpf_cnpj
 
@@ -234,27 +242,27 @@ class MetricasDiarias(models.Model):
     """
     data = models.DateField(unique=True, db_index=True)
     
-    # 1. Financeiro (Caixa) - Detalhado por Valor e Quantidade
-    total_deposito_valor = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+    # 1. Financeiro (Caixa) - Detalhado por Valor e Quantidade (Integer Money)
+    total_deposito_valor = models.BigIntegerField(default=0, verbose_name="Total Depositado (Centavos)")
     total_deposito_qtd = models.IntegerField(default=0)
     
-    total_saque_valor = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+    total_saque_valor = models.BigIntegerField(default=0, verbose_name="Total Sacado (Centavos)")
     total_saque_qtd = models.IntegerField(default=0)
     
-    total_bonus_concedido = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+    total_bonus_concedido = models.BigIntegerField(default=0, verbose_name="Total Bônus Concedido (Centavos)")
 
-    # 2. Operacional (Apostas)
-    total_apostado = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
-    total_premios = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
-    house_edge_valor = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'), verbose_name="Lucro Bruto (GGR)")
+    # 2. Operacional (Apostas) - Integer Money
+    total_apostado = models.BigIntegerField(default=0, verbose_name="Total Apostado (Centavos)")
+    total_premios = models.BigIntegerField(default=0, verbose_name="Total Prêmios (Centavos)")
+    house_edge_valor = models.BigIntegerField(default=0, verbose_name="Lucro Bruto GGR (Centavos)")
     
     # 3. KPIs de Crescimento
     novos_usuarios = models.IntegerField(default=0)
     usuarios_ativos = models.IntegerField(default=0)
     
-    # FTDs Reais (First Time Deposits)
+    # FTDs Reais (First Time Deposits) - Integer Money
     ftds_qtd = models.IntegerField(default=0, verbose_name="Qtd Primeiros Depósitos")
-    ftds_valor = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'))
+    ftds_valor = models.BigIntegerField(default=0, verbose_name="Valor FTDs (Centavos)")
     
     # 4. JSON para Flexibilidade (Ex: Top Modalidades)
     performance_modalidades = models.JSONField(default=dict, blank=True)
@@ -265,6 +273,9 @@ class MetricasDiarias(models.Model):
         verbose_name = "Métrica Diária"
         verbose_name_plural = "Métricas Diárias"
         get_latest_by = 'data'
+        indexes = [
+            models.Index(fields=['data']),
+        ]
 
 class Transacao(models.Model):
     TIPO_CHOICES = [

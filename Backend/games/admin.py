@@ -104,14 +104,14 @@ class SorteioAdmin(admin.ModelAdmin):
 
 @admin.register(Aposta)
 class ApostaAdmin(admin.ModelAdmin):
-    # REMOVIDO 'jogo' (campo removido do Model). Usamos campos válidos existentes.
-    list_display = ('id', 'usuario', 'tipo_jogo', 'valor', 'criado_em', 'ganhou')
+    # Updated to use valid fields after removing tipo_jogo and palpite
+    list_display = ('id', 'usuario', 'jogo', 'modalidade', 'valor', 'status', 'criado_em', 'ganhou')
 
-    # Filtros válidos
-    list_filter = ('ganhou', 'tipo_jogo', 'sorteio__data', 'criado_em')
+    # Updated filters - removed tipo_jogo, added valid fields
+    list_filter = ('ganhou', 'status', 'jogo', 'modalidade', 'sorteio__data', 'criado_em')
 
-    # Pesquisas por usuário/id/palpites
-    search_fields = ('usuario__username', 'id', 'palpites')
+    # Pesquisas por usuário/id/palpites (palpites is JSONField, still searchable)
+    search_fields = ('usuario__cpf_cnpj', 'usuario__nome_completo', 'id', 'palpites')
 
-    # Autocomplete: removido 'jogo'
-    autocomplete_fields = ['usuario', 'sorteio']
+    # Autocomplete fields
+    autocomplete_fields = ['usuario', 'sorteio', 'jogo', 'modalidade']

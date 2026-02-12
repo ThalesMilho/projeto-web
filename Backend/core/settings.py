@@ -81,21 +81,20 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# Zero Trust: Database configuration with DATABASE_URL support
-DATABASE_URL = config('DATABASE_URL', default=None)
+# SECURITY: PostgreSQL ONLY - No fallback to SQLite
+DATABASE_URL = config('DATABASE_URL')
 
-if DATABASE_URL:
-    DATABASES = {
-        'default': dj_database_url.parse(DATABASE_URL)
-    }
-else:
-    # Development SQLite fallback
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
+# CRITICAL: Fail fast if PostgreSQL is not configured
+if not DATABASE_URL:
+    raise ImproperlyConfigured(
+        "DATABASE_URL environment variable is required. "
+        "This application requires PostgreSQL - SQLite fallback is disabled for security."
+    )
+
+# Parse and configure PostgreSQL with production settings
+DATABASES = {
+    'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600)
+}
 
 
 # Password validation
@@ -154,6 +153,23 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': '10/hour',  # More restrictive for anonymous users
         'user': '1000/hour'  # Higher limit for authenticated users
+    }
+}
+
+# --- SPECTACULAR SETTINGS: Allow public access to API documentation ---
+SPECTACULAR_SETTINGS = {
+    'TITLE': config('API_TITLE', default='PixLegal API'),
+    'DESCRIPTION': config('API_DESCRIPTION', default='API de Gestão de Apostas e Financeiro'),
+    'VERSION': config('API_VERSION', default='1.0.0'),
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SERVE_INCLUDE_SCHEMA': False,  # Don't serve schema in docs page
+    'SERVE_PUBLIC_DOCS': True,      # Allow public access to documentation
+    'SWAGGER_UI_SETTINGS': {
+        'deepLinking': True,
+        'persistAuthorization': True,
+        'displayOperationId': True,
+        'filter': True,
+        'tryItOutEnabled': True,  # Enable "Try it out" feature
     }
 }
 
